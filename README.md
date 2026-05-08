@@ -201,7 +201,7 @@ Claude 那边：
 
 **症状**：Codex 调 `claude -p` 报 `API Error: API returned an empty or malformed response (HTTP 200)` 或 `cloudflare 400`。
 
-**原因**：本机使用的 API 网关（如 `api.ikuncode.cc` 或本地代理）通常只兼容 Claude Code 主进程的 streaming endpoint，**不完整支持普通 `/v1/messages` POST**，所以 `claude -p` 这种非交互单次调用打不通。
+**原因**：本机使用的 API 网关通常只兼容 Claude Code 主进程的 streaming endpoint，所以 `claude -p` 这种非交互单次调用打不通。
 
 **解决**：本 skill 已默认走文件邮箱反向链路，**不依赖 `claude -p`**。如未来你的网关修复了，可在 `~/.codex/skills/朋友/SKILL.md` 取消 `claude -p` 备选段的禁用。
 
