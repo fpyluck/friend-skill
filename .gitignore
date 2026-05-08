@@ -1,0 +1,16 @@
+# Backups created by installer
+*.bak.*
+
+# OS clutter
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Mailbox content (path is included as gitkeep, content is local-only)
+shared/friend/*.md
+!shared/friend/.gitkeep
+shared/friend/archive/
