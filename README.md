@@ -205,16 +205,7 @@ Claude 那边：
 
 **解决**：本 skill 已默认走文件邮箱反向链路，**不依赖 `claude -p`**。如未来你的网关修复了，可在 `~/.codex/skills/朋友/SKILL.md` 取消 `claude -p` 备选段的禁用。
 
-**自检**：
-```bash
-# 检查继承 env
-env | grep ANTHROPIC_BASE_URL
-# 探针看路径是否兼容
-curl -X POST -H "Content-Type: application/json" \
-  -H "anthropic-version: 2023-06-01" \
-  $ANTHROPIC_BASE_URL/v1/messages
-# 200 + 空 body 或 400 cloudflare → 网关不兼容
-```
+
 
 ### Codex 找不到 `codex exec resume`
 
