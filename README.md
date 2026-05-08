@@ -265,15 +265,7 @@ Claude 那边：
 
 ## 开发故事
 
-这个 skill 是**通过它自己的协议自我迭代出来的**。整个开发过程中：
-- v0：手写两份 SKILL.md
-- v0.1：用 `[FRIEND_CONSULT round=1]` 让 Codex 评审 v0
-- v0.2：Codex REFINE 直接动手改文件（指出 `codex-wrapper` 不存在、应该用 `codex exec`）
-- v0.3：又一轮协商加入"互通同步机制"
-- v0.4：再一轮加入"首次项目交接卡"
-- v0.5：联网搜程序员真实抱怨（venv 陷阱、context rot、AGENTS.md 太长反而有害），减法 + 加 3 条原则
-- v0.6：诊断并修复反向链路 gateway bug，改用文件邮箱
-- v1.0：泛用性审查，硬编码全部占位符化
+这个 skill 是**通过它自己的协议自我迭代出来的**。本人只是逼逼了两句。
 
 每一轮都是用 `[FRIEND_CONSULT]` 协议本身完成的——这是它最好的实战测试。
 
