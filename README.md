@@ -36,7 +36,7 @@
 
 - **正向（Claude → Codex）**：通过 `codex exec` 命令直接发起协商，session 续接多轮
 - **反向（Codex → Claude）**：通过本地文件邮箱 `~/.shared/friend/codex_to_claude.md` 与 `claude_to_codex.md`，用户转告路径
-  - *为什么不直接用 `claude -p`？* 实测在多种 API 网关下普通 `/v1/messages` POST 路径会返回空响应或 cloudflare 400（参见 [故障排查](#故障排查)）。文件邮箱完全本地，零 API 依赖
+  - *为什么不直接用 `claude -p`？* 实测在多种 API 网关下普通POST 路径会返回空响应或 cloudflare 400。文件邮箱完全本地，零 API 依赖
 
 ## 前提条件
 
