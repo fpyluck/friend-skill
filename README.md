@@ -36,8 +36,7 @@
 ```bash
 git clone https://github.com/fpyluck/friend-skill.git
 cd friend-skill
-bash install.sh                 # 默认只装 朋友 + bridge
-# bash install.sh --with-subtract   # 同时安装可选的 减法 skill
+bash install.sh
 ```
 
 ### PowerShell
@@ -46,7 +45,6 @@ bash install.sh                 # 默认只装 朋友 + bridge
 git clone https://github.com/fpyluck/friend-skill.git
 cd friend-skill
 powershell -ExecutionPolicy Bypass -File install.ps1
-# powershell -ExecutionPolicy Bypass -File install.ps1 -WithSubtract
 ```
 
 安装脚本会做这些事：
@@ -136,17 +134,14 @@ friend-skill/
 ├── install.ps1
 ├── claude/
 │   └── skills/
-│       ├── 朋友/
-│       │   ├── SKILL.md
-│       │   ├── POWERSHELL_TIPS.md
-│       │   └── scripts/
-│       │       └── friend_mailbox_claude.py    # ClaudeCode 侧 helper：status/read/watch/write
-│       └── 减法/
-│           └── SKILL.md                         # 可选；--with-subtract 启用
+│       └── 朋友/
+│           ├── SKILL.md
+│           ├── POWERSHELL_TIPS.md
+│           └── scripts/
+│               └── friend_mailbox_claude.py    # ClaudeCode 侧 helper：status/read/watch/write
 ├── codex/
 │   ├── skills/
-│   │   ├── 朋友/SKILL.md
-│   │   └── 减法/SKILL.md
+│   │   └── 朋友/SKILL.md
 │   └── AGENTS.md.snippet                        # managed-block 模板
 ├── scripts/
 │   └── friend_mailbox_bridge.py                 # 共享桥：--watch / --once / --probe / --wait-reply

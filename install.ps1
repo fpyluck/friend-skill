@@ -2,9 +2,7 @@
 # Idempotent; backs up existing files; updates AGENTS.md via managed block.
 
 [CmdletBinding()]
-param(
-    [switch]$WithSubtract
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -12,8 +10,6 @@ $Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
 $ClaudeFriend = Join-Path $HOME '.claude/skills/朋友'
 $CodexFriend  = Join-Path $HOME '.codex/skills/朋友'
-$ClaudeSubtract = Join-Path $HOME '.claude/skills/减法'
-$CodexSubtract  = Join-Path $HOME '.codex/skills/减法'
 $Mailbox = Join-Path $HOME '.shared/friend'
 $Agents  = Join-Path $HOME '.codex/AGENTS.md'
 
@@ -40,30 +36,22 @@ function Install-File {
     Write-Host "  ✓ $Dst"
 }
 
-Write-Host '[1/6] Install Claude-side 朋友 skill'
+Write-Host '[1/5] Install Claude-side 朋友 skill'
 Install-File (Join-Path $ScriptDir 'claude/skills/朋友/SKILL.md')              (Join-Path $ClaudeFriend 'SKILL.md')
 Install-File (Join-Path $ScriptDir 'claude/skills/朋友/POWERSHELL_TIPS.md')    (Join-Path $ClaudeFriend 'POWERSHELL_TIPS.md')
 Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/friend_mailbox_claude.py') `
              (Join-Path $ClaudeFriend 'scripts/friend_mailbox_claude.py')
 
-Write-Host '[2/6] Install Codex-side 朋友 skill'
+Write-Host '[2/5] Install Codex-side 朋友 skill'
 Install-File (Join-Path $ScriptDir 'codex/skills/朋友/SKILL.md') (Join-Path $CodexFriend 'SKILL.md')
 
-if ($WithSubtract) {
-    Write-Host '[3/6] Install 减法 skill (-WithSubtract)'
-    Install-File (Join-Path $ScriptDir 'claude/skills/减法/SKILL.md') (Join-Path $ClaudeSubtract 'SKILL.md')
-    Install-File (Join-Path $ScriptDir 'codex/skills/减法/SKILL.md')  (Join-Path $CodexSubtract 'SKILL.md')
-} else {
-    Write-Host '[3/6] Skip 减法 skill (pass -WithSubtract to install)'
-}
-
-Write-Host '[4/6] Install mailbox bridge'
+Write-Host '[3/5] Install mailbox bridge'
 if (-not (Test-Path $Mailbox)) {
     New-Item -ItemType Directory -Path $Mailbox -Force | Out-Null
 }
 Install-File (Join-Path $ScriptDir 'scripts/friend_mailbox_bridge.py') (Join-Path $Mailbox 'friend_mailbox_bridge.py')
 
-Write-Host '[5/6] Update ~/.codex/AGENTS.md (managed block, idempotent)'
+Write-Host '[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)'
 $agentsDir = Split-Path -Parent $Agents
 if (-not (Test-Path $agentsDir)) {
     New-Item -ItemType Directory -Path $agentsDir -Force | Out-Null
@@ -95,7 +83,7 @@ if (-not (Test-Path $Agents)) {
     }
 }
 
-Write-Host '[6/6] Verify'
+Write-Host '[5/5] Verify'
 $check = @(
     (Join-Path $ClaudeFriend 'SKILL.md'),
     (Join-Path $CodexFriend  'SKILL.md'),
