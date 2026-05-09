@@ -1,42 +1,85 @@
-# friend-skill
+# 朋友 — Claude × Codex 双向协商
 
-**Two AIs check each other's work before touching your codebase.**
+> 一个 AI 做计划，另一个 AI 审它——重大决策不单人拍板。
 
-`朋友` 给 Claude Code 和 Codex 装了一套协商协议。计划阶段、高风险操作、复杂歧义——其中一个 agent 把判断发给另一个，请它审一遍，再执行。分歧超过 5 轮解决不了就交给你。
+## 为什么需要它
 
-## 协商怎么跑
+AI agent 在独立执行复杂任务时容易陷入局部最优：上下文压力大时会漏掉细节，复杂架构决策时会走错方向，高风险操作时没有第二道防线。
 
-每轮只有三个回答：
+`朋友` 给 Claude Code 和 Codex 装了一套对等协商协议。计划阶段、高风险操作、复杂歧义——一方把草案发给另一方，收到结构化的 AGREE / REFINE / OBJECT 回复，最多 5 轮达成一致，否则交给你裁决。
 
-| 决议 | 含义 |
-|---|---|
-| `AGREE` | 可以执行 |
-| `REFINE` | 方向对，需要收紧 |
-| `OBJECT` | 有根本问题，重想 |
+## 协商长什么样
 
-通信走直连 CLI（Claude Code ↔ Codex），不通时降级为本地文件邮箱 `~/.shared/friend/`，你做一次邮差。
+```
+[用户] 迁移线上数据库
+  ↓
+发起方起草方案 A ──[FRIEND_CONSULT round=1]──→ 朋友
+                    朋友: REFINE: 方案 A 有竞态窗口
+  ↓
+发起方修订为方案 B ──[FRIEND_CONSULT round=2]──→ 朋友
+                    朋友: AGREE: 安全，可以执行
+  ↓
+执行
+```
+
+## 触发时机
+
+**自动触发（不用管）**
+- 制定执行计划 / 架构决策
+- 上下文压力大（会话很长、快要压缩）
+- 用了"重要"、"关键"、"别搞砸"等高风险词
+- 破坏性操作（删除、迁移、生产部署）
+- 跨仓库 / 修改全局配置
+
+**手动触发**：`/朋友` 或说"问问 codex"、"叫上朋友"
+
+**不触发**：单文件小修复、明确执行的简单任务——别打断流程
 
 ## 安装
 
+**Bash / macOS / Linux**
+
 ```bash
 # Claude Code 端
-mkdir -p ~/.claude/skills/朋友 && cp claude/SKILL.md ~/.claude/skills/朋友/SKILL.md
+mkdir -p ~/.claude/skills/朋友
+curl -sL https://raw.githubusercontent.com/fpyluck/friend-skill/main/claude/SKILL.md \
+  > ~/.claude/skills/朋友/SKILL.md
 
 # Codex 端
-mkdir -p ~/.codex/skills/朋友 && cp codex/SKILL.md ~/.codex/skills/朋友/SKILL.md
+mkdir -p ~/.codex/skills/朋友
+curl -sL https://raw.githubusercontent.com/fpyluck/friend-skill/main/codex/SKILL.md \
+  > ~/.codex/skills/朋友/SKILL.md
 ```
 
-两端都装才能双向发起。只装一端也能响应，但那端不会主动开口。
+**Windows PowerShell**
 
-文件邮箱默认路径 `~/.shared/friend/` 可以改，改了两端要一致。
+```powershell
+# Claude Code 端
+New-Item -ItemType Directory -Force "$HOME\.claude\skills\朋友" | Out-Null
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/fpyluck/friend-skill/main/claude/SKILL.md" `
+  -OutFile "$HOME\.claude\skills\朋友\SKILL.md"
 
-## 触发
+# Codex 端
+New-Item -ItemType Directory -Force "$HOME\.codex\skills\朋友" | Out-Null
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/fpyluck/friend-skill/main/codex/SKILL.md" `
+  -OutFile "$HOME\.codex\skills\朋友\SKILL.md"
+```
 
-**自动**（不用你管）：制定执行计划 / 上下文压力大 / 用了"重要""小心""别搞砸"等词 / 破坏性或全局操作
+建议两端都装。只装一端时，只能保证已安装的一端遵循协议；另一端需要用户手动转述并要求按协议回复。
 
-**手动**：`/朋友` 或 `问问 codex` / `叫上朋友`
+## 协商协议
 
-## 文件结构
+三种决议，不造新词：
+
+| 决议 | 含义 |
+|------|------|
+| `AGREE` | 同意当前方案，可以执行 |
+| `REFINE` | 方向对，需要具体修改 |
+| `OBJECT` | 有根本问题，提出替代方案 |
+
+通信走直连 CLI（`claude -p` / `codex exec`），失败时降级到 `~/.shared/friend/` 文件邮箱（`codex_to_claude.md` ↔ `claude_to_codex.md`），由你做一次转发。
+
+## 仓库结构
 
 ```
 friend-skill/
@@ -48,6 +91,3 @@ friend-skill/
 
 *这个 skill 是用它自己的协议迭代出来的。*
 
----
-
-**English:** `朋友` is a bidirectional consultation protocol for Claude Code × Codex CLI. On plan/risk/ambiguity triggers, one agent sends its draft to the other for a structured AGREE / REFINE / OBJECT verdict, up to 5 rounds, then escalates to you. Direct CLI channels, local file mailbox fallback. Copy-based install.
