@@ -69,6 +69,17 @@ description: 与本地 Codex 双向协商完成任务的协作 skill。在制定
 - 相关文件指针: <按需 @ 引用或绝对路径列表；没有写 N/A>
 ```
 
+### Transport 选择（Claude→Codex 方向）
+
+发起协商前按顺序尝试：
+1. **`codex exec --json`**（默认，本机 codex CLI 可用时）
+2. **`codex_broker`**（仅当 `CODEX_COMPANION_APP_SERVER_ENDPOINT` 已设或精确 cwd 对应 `broker.json` 存在；失败/busy → 立即降级，不重试）
+3. **file mailbox manual**（spawn 受阻或以上均失败时）
+4. **用户手工转发**（终极降级）
+
+`-o` 写文件只用 `%TEMP%`/`$TMPDIR` 等已知可写目录；stdout JSONL 是主解析来源。  
+根据 `FRIEND_TRUST_LEVEL` 在 `codex exec` 基础命令后追加沙盒 flag（见下方"Trust Level"节）。
+
 ### 第一轮：发起咨询（你 → Codex）
 
 优先走 `codex exec` 直连：先检查 pending（`.bridge.pending` 或 `.bridge_state.json` 的 `pending_for_claude`）和 failure cache；未处于熔断且 codex CLI 可用时，用下方命令发起咨询。直连不可用、命中熔断或环境受阻（例如沙盒只读）时，降级到文件邮箱 manual transport（写 `~/.shared/friend/codex_to_claude.md`，告知用户转告 Codex）。
@@ -193,6 +204,38 @@ Codex 的方案：<要点>
 **浅 watcher**：若需要让正在运行的 ClaudeCode 更容易看到 pending，但不想自动代答，运行 `scripts/surface_friend_pending.sh`；它只把 pending inbox 复制到 `~/.shared/friend/CLAUDE_PENDING_INBOX.md` 并打印路径，仍由 ClaudeCode 自己判断并用 `write` 写回。
 
 **Queue 优先用于 manual 新请求**：manual 模式下新任务优先处理 `~/.shared/friend/queue/to_claude/<request-id>.md`，用 `scripts/friend_mailbox_claude.py queue next --print-id --print-body` 读取，用 `queue reply <request-id> --reply-file <reply.md>` 写同 id 回复；旧 `codex_to_claude.md`/`claude_to_codex.md` 只作兼容。队列说明见 `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`。
+
+## Trust Level 与权限控制
+
+### FRIEND_TRUST_LEVEL（权限范围，双向对称）
+
+| 档位 | Claude→Codex（codex exec） | Codex→Claude（claude -p via bridge） |
+|---|---|---|
+| **safe** | `--sandbox read-only` | `--allowedTools Read,Grep,Glob,LS` |
+| **workspace**（默认）| `--sandbox workspace-write` | `--permission-mode acceptEdits --allowedTools Read,Grep,Glob,LS,Edit,MultiEdit,Write` |
+| **danger** | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+
+`danger` 需同时满足 `FRIEND_TRUST_LEVEL=danger` **且** `FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND`，否则 bridge 静默降级到 `workspace` 并写 stderr/log/state。
+
+在 `codex exec` 命令中，根据 trust-level 追加对应 flag；若设置了 `FRIEND_CODEX_EXEC_EXTRA_FLAGS`，用 `shlex.split` 解析后 append 到命令末尾（检测到与 sandbox/danger flag 冲突时写 stderr；需要覆盖另设 `FRIEND_ALLOW_TRUST_OVERRIDE=1`）。
+
+### FRIEND_DISPATCH_MODE（automation 激进度，仅影响 bridge claude -p 方向）
+
+| 档位 | 行为 |
+|---|---|
+| **manual** | 禁止 `claude -p` 自动 dispatch；bridge 只做协议守卫 + archive |
+| **auto**（默认） | 现有 failure_cache + TTL 行为 |
+| **eager** | 非 auth 失败 TTL × 0.5（下限 30s）；auth 类不缩短；`--force` 仍是唯一绕过 |
+
+优先级：CLI arg（`--trust-level` / `--dispatch-mode`）> 对应 env var > 默认值。
+
+### 迁移：旧 FRIEND_TRUST_LEVEL=0/1/2
+
+旧数字值已废弃；bridge 自动映射到 `FRIEND_DISPATCH_MODE`（`0→manual`、`1→auto`、`2→eager`）并输出 deprecation warning。权限档始终默认 `workspace`，不受旧值影响。
+
+### 配置文件
+
+权限配置只通过 env var 或 CLI arg 设置；参考 `~/.shared/friend/trust-profile.env.example`，不自动 source，不改全局 settings。
 
 ## 协议词义
 

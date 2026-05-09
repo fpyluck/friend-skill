@@ -9,6 +9,13 @@
 - Failure cache (state.failure_cache) skips dispatch within TTL after a classified failure.
   TTL base by classification (timeout=300, proxy=malformed=unknown=600, auth=900),
   exponential backoff up to 1h, env FRIEND_BRIDGE_FAILURE_TTL_SECONDS overrides base.
+- Trust/dispatch control:
+    FRIEND_TRUST_LEVEL = safe | workspace (default) | danger
+      Controls permission flags on claude -p calls (Codex->Claude direction).
+      danger requires FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND else degrades to workspace.
+    FRIEND_DISPATCH_MODE = manual | auto (default) | eager
+      Controls automation aggressiveness for claude -p dispatch.
+      Legacy FRIEND_TRUST_LEVEL=0/1/2 mapped to FRIEND_DISPATCH_MODE with deprecation warning.
 """
 
 from __future__ import annotations
@@ -47,6 +54,27 @@ TTL_BASE_BY_CLASSIFICATION = {
 }
 TTL_CAP = 3600
 ENV_TTL_OVERRIDE = "FRIEND_BRIDGE_FAILURE_TTL_SECONDS"
+
+# ----- trust / dispatch -----
+
+TRUST_LEVELS = frozenset({"safe", "workspace", "danger"})
+DISPATCH_MODES = frozenset({"manual", "auto", "eager"})
+TRUST_LEVEL_ENV = "FRIEND_TRUST_LEVEL"
+DISPATCH_MODE_ENV = "FRIEND_DISPATCH_MODE"
+DANGER_ACK_ENV = "FRIEND_TRUST_DANGER_ACK"
+DANGER_ACK_VALUE = "I_UNDERSTAND"
+EAGER_TTL_SCALE = 0.5
+EAGER_TTL_FLOOR = 30  # seconds minimum TTL after eager scaling
+
+# claude -p allowedTools preset per trust level
+TOOLS_BY_TRUST: dict[str, str] = {
+    "safe": "Read,Grep,Glob,LS",
+    "workspace": "Read,Grep,Glob,LS,Edit,MultiEdit,Write",
+    "danger": "Read,Grep,Glob,LS,Edit,MultiEdit,Write,Bash",
+}
+
+# Legacy FRIEND_TRUST_LEVEL numeric values -> FRIEND_DISPATCH_MODE
+_LEGACY_DISPATCH_MAP: dict[str, str] = {"0": "manual", "1": "auto", "2": "eager"}
 
 
 # ----- helpers -----
@@ -159,7 +187,7 @@ def process_alive(pid: int) -> bool:
         return False
 
 
-def ttl_for_classification(classification: str, count: int) -> int:
+def ttl_for_classification(classification: str, count: int, *, dispatch_mode: str = "auto") -> int:
     env_override = os.environ.get(ENV_TTL_OVERRIDE)
     base = TTL_BASE_BY_CLASSIFICATION.get(
         classification, TTL_BASE_BY_CLASSIFICATION["unknown"]
@@ -171,7 +199,11 @@ def ttl_for_classification(classification: str, count: int) -> int:
             pass
     backoff_exp = max(1, count) - 1
     ttl = base * (2 ** backoff_exp)
-    return min(ttl, TTL_CAP)
+    ttl = min(ttl, TTL_CAP)
+    # eager mode: scale down non-auth failures with a floor
+    if dispatch_mode == "eager" and classification != "auth":
+        ttl = max(int(ttl * EAGER_TTL_SCALE), EAGER_TTL_FLOOR)
+    return ttl
 
 
 def classify_failure(
@@ -200,6 +232,67 @@ def classify_failure(
     if isinstance(exc, json.JSONDecodeError):
         return "malformed"
     return "unknown"
+
+
+# ----- trust / dispatch resolver -----
+
+def resolve_trust(args: argparse.Namespace) -> tuple[str, str]:
+    """Return (trust_level, dispatch_mode) from CLI args + env, with validation.
+
+    Priority: CLI arg > env var > default.
+    Legacy FRIEND_TRUST_LEVEL=0/1/2 maps to FRIEND_DISPATCH_MODE with a deprecation warning.
+    danger requires FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND, else degrades to workspace.
+    """
+    env_trust_raw = os.environ.get(TRUST_LEVEL_ENV, "")
+    env_dispatch = os.environ.get(DISPATCH_MODE_ENV, "")
+
+    # --- dispatch_mode: CLI > env DISPATCH_MODE > legacy numeric > default auto ---
+    if args.dispatch_mode:
+        dispatch_mode = args.dispatch_mode
+    elif env_dispatch in DISPATCH_MODES:
+        dispatch_mode = env_dispatch
+    elif env_trust_raw in _LEGACY_DISPATCH_MAP:
+        migrated = _LEGACY_DISPATCH_MAP[env_trust_raw]
+        print(
+            f"bridge: FRIEND_TRUST_LEVEL={env_trust_raw!r} (numeric) is deprecated; "
+            f"use FRIEND_DISPATCH_MODE={migrated} for automation level.",
+            file=sys.stderr, flush=True,
+        )
+        dispatch_mode = migrated
+    else:
+        dispatch_mode = "auto"
+
+    if dispatch_mode not in DISPATCH_MODES:
+        print(
+            f"bridge: unknown FRIEND_DISPATCH_MODE={dispatch_mode!r}, defaulting to auto",
+            file=sys.stderr, flush=True,
+        )
+        dispatch_mode = "auto"
+
+    # --- trust_level: CLI > env TRUST_LEVEL (named only) > default workspace ---
+    if args.trust_level:
+        trust_level = args.trust_level
+    elif env_trust_raw in TRUST_LEVELS:
+        trust_level = env_trust_raw
+    else:
+        if env_trust_raw and env_trust_raw not in _LEGACY_DISPATCH_MAP:
+            print(
+                f"bridge: unknown FRIEND_TRUST_LEVEL={env_trust_raw!r}, defaulting to workspace",
+                file=sys.stderr, flush=True,
+            )
+        trust_level = "workspace"
+
+    # --- danger double-confirmation gate ---
+    if trust_level == "danger":
+        if os.environ.get(DANGER_ACK_ENV) != DANGER_ACK_VALUE:
+            print(
+                f"bridge: FRIEND_TRUST_LEVEL=danger requires "
+                f"{DANGER_ACK_ENV}={DANGER_ACK_VALUE!r}; degrading to workspace.",
+                file=sys.stderr, flush=True,
+            )
+            trust_level = "workspace"
+
+    return trust_level, dispatch_mode
 
 
 # ----- locks -----
@@ -299,7 +392,6 @@ class WatchLock:
                 f"host={existing.get('host')} heartbeat_at={existing.get('heartbeat_at')}"
             )
         self._write_payload()
-        # Read-back to confirm we own the lock (defense against TOCTOU/race).
         verify = read_json(self.path, None)
         if not isinstance(verify, dict) or verify.get("token") != self.token:
             return False, "lock contention detected on read-back; another watcher acquired first"
@@ -319,7 +411,6 @@ class WatchLock:
         atomic_write(self.path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
     def heartbeat(self) -> bool:
-        """Update heartbeat timestamp; return False if lock ownership lost."""
         if not self.acquired:
             return False
         data = read_json(self.path, None)
@@ -387,7 +478,7 @@ def archive_side(
     metadata_only: bool = False,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Archive a single mailbox side (codex_to_claude | claude_to_codex). Used by manual transport."""
+    """Archive a single mailbox side (codex_to_claude | claude_to_codex)."""
     archive_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{now_stamp()}_{digest[:12]}"
     if metadata_only:
@@ -402,7 +493,7 @@ def archive_side(
 
 
 def update_sentinel(mailbox: Path, state: dict[str, Any]) -> None:
-    """Maintain ~/.shared/friend/.bridge.pending: present iff any pending flag set; JSON metadata."""
+    """Maintain ~/.shared/friend/.bridge.pending: present iff any pending flag set."""
     sentinel = mailbox / ".bridge.pending"
     pending_for_claude = bool(state.get("pending_for_claude"))
     pending_for_codex = bool(state.get("pending_for_codex"))
@@ -428,15 +519,31 @@ def update_sentinel(mailbox: Path, state: dict[str, Any]) -> None:
 
 # ----- claude invocation -----
 
-def call_claude(args: argparse.Namespace, prompt: str) -> dict[str, Any]:
-    """Invoke claude -p; return {ok, reply, payload, classification, error_text}."""
-    command = [
-        args.claude_bin,
-        "-p",
-        "--output-format",
-        "json",
-        f"--allowedTools={args.allowed_tools}",
-    ]
+def call_claude(
+    args: argparse.Namespace,
+    prompt: str,
+    *,
+    trust_level: str = "workspace",
+) -> dict[str, Any]:
+    """Invoke claude -p with trust-level-derived permission flags.
+
+    Trust-level determines the permission flags applied to the claude subprocess
+    (Codex->Claude direction). User --allowed-tools override is honored when set.
+    """
+    command = [args.claude_bin, "-p", "--output-format", "json"]
+
+    # Apply trust-level permission flags; honor explicit --allowed-tools override
+    if trust_level == "safe":
+        tools = args.allowed_tools or TOOLS_BY_TRUST["safe"]
+        command.extend(["--allowedTools", tools])
+    elif trust_level == "workspace":
+        tools = args.allowed_tools or TOOLS_BY_TRUST["workspace"]
+        command.extend(["--permission-mode", "acceptEdits", "--allowedTools", tools])
+    elif trust_level == "danger":
+        command.append("--dangerously-skip-permissions")
+        if args.allowed_tools:
+            command.extend(["--allowedTools", args.allowed_tools])
+
     for directory in args.add_dir:
         command.extend(["--add-dir", directory])
 
@@ -535,7 +642,11 @@ def cache_skip_active(state: dict[str, Any]) -> tuple[bool, dict[str, Any] | Non
 
 
 def make_failure_cache(
-    classification: str, prev_cache: dict[str, Any] | None, error_text: str
+    classification: str,
+    prev_cache: dict[str, Any] | None,
+    error_text: str,
+    *,
+    dispatch_mode: str = "auto",
 ) -> dict[str, Any]:
     if prev_cache and prev_cache.get("classification") == classification:
         count = int(prev_cache.get("failure_count") or 0) + 1
@@ -543,7 +654,7 @@ def make_failure_cache(
     else:
         count = 1
         first = now_iso()
-    ttl = ttl_for_classification(classification, count)
+    ttl = ttl_for_classification(classification, count, dispatch_mode=dispatch_mode)
     skip_until_ts = now_ts() + ttl
     return {
         "classification": classification,
@@ -553,6 +664,7 @@ def make_failure_cache(
         "ttl_seconds": ttl,
         "skip_until": dt.datetime.fromtimestamp(skip_until_ts, dt.timezone.utc).astimezone().isoformat(timespec="seconds"),
         "last_error_redacted": redact_text(error_text or ""),
+        "dispatch_mode": dispatch_mode,
     }
 
 
@@ -598,7 +710,6 @@ def handle_manual_tick(
             state["last_inbox_marker"] = in_marker
             if in_protocol:
                 state["pending_for_claude"] = True
-                # Symmetric: a fresh inbox implies the previous outbox has been read by Codex.
                 state["pending_for_codex"] = False
                 append_log(
                     log_path,
@@ -680,7 +791,16 @@ def handle_once(args: argparse.Namespace) -> str:
                 args, mailbox, inbox, outbox, state_path, log_path, archive_dir
             )
 
-        # claude_cli transport: original dispatch flow with failure cache
+        # claude_cli transport: resolve trust + dispatch, then original flow
+        trust_level, dispatch_mode = resolve_trust(args)
+
+        # dispatch_mode=manual: protocol guard only, no claude -p dispatch
+        if dispatch_mode == "manual":
+            append_log(log_path, {"event": "dispatch_disabled", "reason": "dispatch_mode=manual"})
+            return handle_manual_tick(
+                args, mailbox, inbox, outbox, state_path, log_path, archive_dir
+            )
+
         message = read_stable_text(inbox, args.stable_delay)
         if message is None:
             return "missing"
@@ -690,6 +810,8 @@ def handle_once(args: argparse.Namespace) -> str:
         digest = sha256_text(message)
         state = migrate_state(read_json(state_path, {}))
         state["transport"] = "claude_cli"
+        state["trust_level"] = trust_level
+        state["dispatch_mode"] = dispatch_mode
 
         skip_active, cache = cache_skip_active(state)
         if skip_active and not args.force:
@@ -715,9 +837,15 @@ def handle_once(args: argparse.Namespace) -> str:
 
         append_log(
             log_path,
-            {"event": "dispatch", "marker": marker, "sha256_short": digest[:12]},
+            {
+                "event": "dispatch",
+                "marker": marker,
+                "sha256_short": digest[:12],
+                "trust_level": trust_level,
+                "dispatch_mode": dispatch_mode,
+            },
         )
-        outcome = call_claude(args, message)
+        outcome = call_claude(args, message, trust_level=trust_level)
         if outcome["ok"]:
             reply = outcome["reply"] or ""
             payload = outcome["payload"] or {}
@@ -761,7 +889,10 @@ def handle_once(args: argparse.Namespace) -> str:
 
         classification = outcome["classification"] or "unknown"
         prev_cache = state.get("failure_cache") if isinstance(state.get("failure_cache"), dict) else None
-        new_cache = make_failure_cache(classification, prev_cache, outcome["error_text"] or "")
+        new_cache = make_failure_cache(
+            classification, prev_cache, outcome["error_text"] or "",
+            dispatch_mode=dispatch_mode,
+        )
         archive_pair(
             archive_dir,
             digest,
@@ -793,6 +924,8 @@ def handle_once(args: argparse.Namespace) -> str:
                 "error_redacted": new_cache["last_error_redacted"],
                 "failure_count": new_cache["failure_count"],
                 "skip_until": new_cache["skip_until"],
+                "trust_level": trust_level,
+                "dispatch_mode": dispatch_mode,
                 "claude_bin_basename": Path(args.claude_bin or "").name,
             },
         )
@@ -811,11 +944,6 @@ def wait_reply(args: argparse.Namespace) -> int:
       1. explicit --since-sha256 (caller knows what it last consumed)
       2. state.last_consumed_outbox_sha256 (last hash this call confirmed it consumed)
       3. live outbox hash at startup (fallback when first run on a fresh mailbox)
-
-    State mutation is serialized via .bridge.lock; if the lock is held by a concurrent
-    --watch tick we retry within wait_timeout (FileLock is non-blocking by design).
-    On success, pending_for_codex is cleared (caller consumed the reply via stdout)
-    and last_consumed_outbox_sha256 advances.
     """
     mailbox = args.mailbox.expanduser().resolve()
     outbox = mailbox / "claude_to_codex.md"
@@ -859,7 +987,6 @@ def wait_reply(args: argparse.Namespace) -> int:
                     metadata_only=args.no_archive_prompts,
                     metadata={"marker": marker, "is_protocol": True},
                 )
-                # Acquire short lock with retry until deadline (FileLock is non-blocking).
                 state_written = False
                 while not state_written:
                     try:
@@ -886,12 +1013,8 @@ def wait_reply(args: argparse.Namespace) -> int:
                         if now_ts() >= deadline:
                             append_log(
                                 log_path,
-                                {
-                                    "event": "wait_reply_lock_timeout",
-                                    "sha256_short": digest[:12],
-                                },
+                                {"event": "wait_reply_lock_timeout", "sha256_short": digest[:12]},
                             )
-                            # Reply still printed below; caller can re-run to consume state cleanly.
                             print(
                                 "wait_reply: lock contention; reply printed but state update deferred",
                                 file=sys.stderr,
@@ -926,35 +1049,61 @@ def probe_once(args: argparse.Namespace) -> int:
     """Single diagnostic call.
 
     transport=manual: prints status only; does not invoke claude.
-    transport=claude_cli: invokes claude -p; updates failure_cache (sets on failure, clears on success).
+    transport=claude_cli + dispatch_mode=manual: prints dispatch-disabled status.
+    transport=claude_cli + dispatch_mode=auto/eager: invokes claude -p with trust-level flags.
     """
     if args.transport == "manual":
         print("transport=manual ok (no dispatch performed; bridge acts as protocol guard + archive)")
         print("hint: re-run with --transport claude_cli --probe to test claude -p")
         return 0
+
+    trust_level, dispatch_mode = resolve_trust(args)
+
+    if dispatch_mode == "manual":
+        print(
+            f"transport=claude_cli dispatch_mode=manual: dispatch disabled "
+            f"(trust_level={trust_level}; probe skipped)"
+        )
+        print("hint: set FRIEND_DISPATCH_MODE=auto or pass --dispatch-mode auto to enable")
+        return 0
+
     mailbox = args.mailbox.expanduser().resolve()
     state_path = args.state or mailbox / ".bridge_state.json"
     log_path = args.log or mailbox / "bridge.log.jsonl"
     state = migrate_state(read_json(state_path, {}))
     state["transport"] = "claude_cli"
-    outcome = call_claude(args, "Please reply with the single word OK.")
+
+    outcome = call_claude(args, "Please reply with the single word OK.", trust_level=trust_level)
     if outcome["ok"]:
         state.pop("failure_cache", None)
         state["last_probe_status"] = "ok"
         state["last_probe_at"] = now_iso()
+        state["last_probe_trust_level"] = trust_level
+        state["last_probe_dispatch_mode"] = dispatch_mode
         atomic_write(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
         append_log(
             log_path,
-            {"event": "probe_ok", "claude_bin_basename": Path(args.claude_bin or "").name},
+            {
+                "event": "probe_ok",
+                "trust_level": trust_level,
+                "dispatch_mode": dispatch_mode,
+                "claude_bin_basename": Path(args.claude_bin or "").name,
+            },
         )
-        print("ok")
+        print(f"ok (trust_level={trust_level} dispatch_mode={dispatch_mode})")
         return 0
+
     classification = outcome["classification"] or "unknown"
     prev_cache = state.get("failure_cache") if isinstance(state.get("failure_cache"), dict) else None
-    new_cache = make_failure_cache(classification, prev_cache, outcome["error_text"] or "")
+    new_cache = make_failure_cache(
+        classification, prev_cache, outcome["error_text"] or "",
+        dispatch_mode=dispatch_mode,
+    )
     state["failure_cache"] = new_cache
     state["last_probe_status"] = f"failed:{classification}"
     state["last_probe_at"] = now_iso()
+    state["last_probe_trust_level"] = trust_level
+    state["last_probe_dispatch_mode"] = dispatch_mode
     atomic_write(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
     append_log(
         log_path,
@@ -963,10 +1112,12 @@ def probe_once(args: argparse.Namespace) -> int:
             "classification": classification,
             "error_redacted": new_cache["last_error_redacted"],
             "skip_until": new_cache["skip_until"],
+            "trust_level": trust_level,
+            "dispatch_mode": dispatch_mode,
             "claude_bin_basename": Path(args.claude_bin or "").name,
         },
     )
-    print(f"failed:{classification}")
+    print(f"failed:{classification} (trust_level={trust_level} dispatch_mode={dispatch_mode})")
     return 1
 
 
@@ -983,12 +1134,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--transport",
         choices=["manual", "claude_cli"],
         default="manual",
-        help="manual (default): protocol guard + archive + state, no claude dispatch (any system, stdlib only). "
-             "claude_cli: invoke claude -p with failure cache (requires working claude -p).",
+        help="manual (default): protocol guard + archive + state, no claude dispatch. "
+             "claude_cli: invoke claude -p (requires working claude -p; respects --dispatch-mode).",
+    )
+    parser.add_argument(
+        "--trust-level",
+        choices=["safe", "workspace", "danger"],
+        default=None,
+        help="Permission level for claude -p calls (Codex->Claude direction). "
+             "safe=read-only; workspace=acceptEdits+write (default); danger=bypass-all+ACK required. "
+             "Overrides FRIEND_TRUST_LEVEL env var.",
+    )
+    parser.add_argument(
+        "--dispatch-mode",
+        choices=["manual", "auto", "eager"],
+        default=None,
+        help="Automation aggressiveness for claude -p dispatch. "
+             "manual=no dispatch; auto=failure_cache+TTL (default); eager=shorter TTL for transient failures. "
+             "Overrides FRIEND_DISPATCH_MODE env var.",
     )
     parser.add_argument("--mailbox", type=Path, default=Path("~/.shared/friend"))
     parser.add_argument("--add-dir", action="append", default=[], help="directory Claude may read")
-    parser.add_argument("--allowed-tools", default="Read,Grep,Glob,LS")
+    parser.add_argument(
+        "--allowed-tools",
+        default=None,
+        help="override allowedTools passed to claude -p (default derived from --trust-level). "
+             "Comma-separated tool names.",
+    )
     parser.add_argument("--claude-bin", default=shutil.which("claude") or "claude")
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--poll-interval", type=float, default=1.0)
@@ -1050,6 +1222,13 @@ def main(argv: list[str]) -> int:
         append_log(log_path, {"event": "watch_skip_already_running", "reason": reason})
         return 0
 
+    # Log effective trust/dispatch at startup for claude_cli transport
+    if args.transport == "claude_cli":
+        trust_level, dispatch_mode = resolve_trust(args)
+        startup_extra: dict[str, Any] = {"trust_level": trust_level, "dispatch_mode": dispatch_mode}
+    else:
+        startup_extra = {}
+
     print(
         f"watching {home_collapse(mailbox / 'codex_to_claude.md')} pid={os.getpid()} host={host_id()}",
         flush=True,
@@ -1062,6 +1241,7 @@ def main(argv: list[str]) -> int:
             "host": host_id(),
             "mailbox": home_collapse(mailbox),
             "claude_bin_basename": Path(args.claude_bin or "").name,
+            **startup_extra,
         },
     )
     last_heartbeat = 0.0

@@ -160,6 +160,38 @@ Claude 的方案：<要点>
 
 只有标记**位于消息开头**才识别为协商。
 
+## Trust Level 与权限控制
+
+### FRIEND_TRUST_LEVEL（权限范围，双向对称）
+
+| 档位 | Codex→Claude（claude -p 直调或 via bridge） | Claude→Codex（codex exec） |
+|---|---|---|
+| **safe** | `--allowedTools Read,Grep,Glob,LS` | `--sandbox read-only` |
+| **workspace**（默认）| `--permission-mode acceptEdits --allowedTools Read,Grep,Glob,LS,Edit,MultiEdit,Write` | `--sandbox workspace-write` |
+| **danger** | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
+
+`danger` 需同时满足 `FRIEND_TRUST_LEVEL=danger` **且** `FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND`，否则 bridge 静默降级到 `workspace` 并写 stderr/log/state。
+
+直接调 `claude -p` 时，根据 `FRIEND_TRUST_LEVEL` 追加对应 flag（见上表左列）；bridge 在 `--transport claude_cli` 时自动应用。
+
+### FRIEND_DISPATCH_MODE（automation 激进度，仅影响 bridge claude -p 方向）
+
+| 档位 | 行为 |
+|---|---|
+| **manual** | 禁止 `claude -p` 自动 dispatch；bridge 只做协议守卫 + archive |
+| **auto**（默认） | 现有 failure_cache + TTL 行为 |
+| **eager** | 非 auth 失败 TTL × 0.5（下限 30s）；auth 类不缩短；`--force` 仍是唯一绕过 |
+
+优先级：CLI arg（`--trust-level` / `--dispatch-mode`）> 对应 env var > 默认值。
+
+### 迁移：旧 FRIEND_TRUST_LEVEL=0/1/2
+
+旧数字值已废弃；bridge 自动映射到 `FRIEND_DISPATCH_MODE`（`0→manual`、`1→auto`、`2→eager`）并输出 deprecation warning。权限档始终默认 `workspace`，不受旧值影响。
+
+### 配置文件
+
+权限配置只通过 env var 或 CLI arg 设置；参考 `~/.shared/friend/trust-profile.env.example`，不自动 source，不改全局 settings。
+
 ## 协议词义
 
 - **AGREE**：同意当前方案，可以执行
