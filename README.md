@@ -30,7 +30,7 @@
 - **stdlib only**：`bridge` 和 helper 都只用 Python 标准库；不引入第三方包，不修改用户 shell / PATH / proxy / settings。
 
 
-已知BUG：CLI失效的时候本地信箱互相自动拉取非常困难。。。求改
+~~已知BUG：CLI失效的时候本地信箱互相自动拉取非常困难~~（已修复：`pending_for_claude` 现在通过 `pending_inbox_sha256` 与 inbox 消息绑定，不再被无关 outbox 写入错误清零）
 
 ## 30 秒安装
 

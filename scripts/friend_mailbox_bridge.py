@@ -710,6 +710,7 @@ def handle_manual_tick(
             state["last_inbox_marker"] = in_marker
             if in_protocol:
                 state["pending_for_claude"] = True
+                state["pending_inbox_sha256"] = in_digest  # track which inbox message triggered pending
                 state["pending_for_codex"] = False
                 append_log(
                     log_path,
@@ -745,7 +746,12 @@ def handle_manual_tick(
             state["last_outbox_marker"] = out_marker
             if out_protocol:
                 state["pending_for_codex"] = True
-                state["pending_for_claude"] = False
+                # Only clear pending_for_claude if the inbox SHA hasn't changed since we set it pending.
+                # An unrelated outbox write must not silently drop an unread inbox message.
+                if state.get("pending_inbox_sha256") and state.get("last_inbox_sha256") and \
+                        state["pending_inbox_sha256"] == state["last_inbox_sha256"]:
+                    state["pending_for_claude"] = False
+                    state.pop("pending_inbox_sha256", None)
                 append_log(
                     log_path,
                     {"event": "outbox_pending", "marker": out_marker, "sha256_short": out_digest[:12]},
@@ -999,7 +1005,13 @@ def wait_reply(args: argparse.Namespace) -> int:
                             state["last_consumed_outbox_sha256"] = digest
                             state["last_consumed_outbox_at"] = now_iso()
                             state["pending_for_codex"] = False
-                            state["pending_for_claude"] = False
+                            # Only clear pending_for_claude if the inbox hasn't received a newer
+                            # message since the pending was set. Avoids silently dropping inbox
+                            # messages that arrived between Claude's reply and Codex consuming it.
+                            if state.get("pending_inbox_sha256") and state.get("last_inbox_sha256") and \
+                                    state["pending_inbox_sha256"] == state["last_inbox_sha256"]:
+                                state["pending_for_claude"] = False
+                                state.pop("pending_inbox_sha256", None)
                             state["updated_at"] = now_iso()
                             update_sentinel(mailbox, state)
                             atomic_write(
