@@ -1,97 +1,53 @@
 # friend-skill
 
-**A two-agent consultation protocol for Claude Code and Codex.**
+**Two AIs check each other's work before touching your codebase.**
 
-让CodeX-Claude Code 双向协商完成任务的协作 skill。在制定执行性计划阶段强制触发；工作阶段当上下文压力大、复杂歧义、用户用了高风险信号词、或涉及破坏性/全局/跨仓库操作时强制触发。难判时询问用户，简单任务默认不触发。多轮协商（最多 5 轮）至达成一致，分歧由用户裁决。也可通过 /朋友 或"问问 claude"、"和朋友商量"手动触发。双倍Token，双倍效率，双倍快乐。同时让二者快乐的分享技能，一人拥有，另一方马上适配。
+`朋友` 给 Claude Code 和 Codex 装了一套协商协议。计划阶段、高风险操作、复杂歧义——其中一个 agent 把判断发给另一个，请它审一遍，再执行。分歧超过 5 轮解决不了就交给你。
 
-## 这是什么
+## 协商怎么跑
 
-`朋友` 是一个双向协商 skill：当任务进入计划阶段、风险变高、上下文复杂，或用户手动喊 `/朋友` 时，一端 agent 会把当前判断发给另一端 agent，请它审一下计划、风险和遗漏。
+每轮只有三个回答：
 
-优先走直连 CLI：
+| 决议 | 含义 |
+|---|---|
+| `AGREE` | 可以执行 |
+| `REFINE` | 方向对，需要收紧 |
+| `OBJECT` | 有根本问题，重想 |
 
-```bash
-claude -p --output-format json   # Codex → Claude
-codex exec --skip-git-repo-check # Claude → Codex
-```
-
-如果直连不可用，就降级为文件邮箱：双方通过共享 Markdown 文件交换意见，用户做一次邮差。
-
-默认文件邮箱路径是：
-
-```text
-~/.shared/friend/
-```
-
-这个路径可以改，但 Claude Code 端和 Codex 端必须保持一致。
+通信走直连 CLI（Claude Code ↔ Codex），不通时降级为本地文件邮箱 `~/.shared/friend/`，你做一次邮差。
 
 ## 安装
 
-这是复制式安装，不是包管理器。把对应的 `SKILL.md` 放到各自 agent 的 skills 目录即可。
-
-**Claude Code 端：**
-
 ```bash
+# Claude Code 端
 mkdir -p ~/.claude/skills/朋友 && cp claude/SKILL.md ~/.claude/skills/朋友/SKILL.md
-```
 
-**Codex 端：**
-
-```bash
+# Codex 端
 mkdir -p ~/.codex/skills/朋友 && cp codex/SKILL.md ~/.codex/skills/朋友/SKILL.md
 ```
 
-两端都装才能双向协商。只装一端也能用，但另一端不会主动发起协商。
+两端都装才能双向发起。只装一端也能响应，但那端不会主动开口。
 
-## 触发方式
+文件邮箱默认路径 `~/.shared/friend/` 可以改，改了两端要一致。
 
-**自动触发：**
+## 触发
 
-- 制定执行计划、做架构决策时
-- 任务复杂、歧义大、上下文压力高时
-- 用户说了"重要""关键""小心"等高风险词时
-- 涉及破坏性操作、全局配置、跨仓库改动时
+**自动**（不用你管）：制定执行计划 / 上下文压力大 / 用了"重要""小心""别搞砸"等词 / 破坏性或全局操作
 
-**手动触发：**
+**手动**：`/朋友` 或 `问问 codex` / `叫上朋友`
 
-```text
-/朋友
-```
-
-也可以说：`问问 codex` / `和朋友商量` / `叫上朋友`
-
-## 工作方式
-
-一端把当前任务、计划和风险点发给另一端，对方只做三件事：
-
-- `AGREE`：计划可执行
-- `REFINE`：方向对，但需要收紧或补充
-- `OBJECT`：存在关键问题，需要重想
-
-最多 5 轮协商。仍有分歧时升级给用户裁决。
-
-## 项目结构
+## 文件结构
 
 ```
 friend-skill/
-├── README.md
-├── LICENSE
-├── claude/
-│   └── SKILL.md    # 复制到 ~/.claude/skills/朋友/SKILL.md
-└── codex/
-    └── SKILL.md    # 复制到 ~/.codex/skills/朋友/SKILL.md
+├── claude/SKILL.md    →  ~/.claude/skills/朋友/SKILL.md
+└── codex/SKILL.md     →  ~/.codex/skills/朋友/SKILL.md
 ```
-
-## 适合谁
-
-适合经常让 AI 改代码、做架构判断、处理高风险操作的程序员。
-
-它不是让两个 agent 无限聊天，而是给关键决策加一个冷静的搭档。
 
 ---
 
-## English Summary
+*这个 skill 是用它自己的协议迭代出来的。*
 
-**friend (朋友)** is a bidirectional consultation protocol installed on both **Claude Code** and **Codex CLI**. When tasks enter decision phases — executable plans, high context pressure, ambiguity, high-risk signals, or destructive operations — the two agents negotiate via a three-state verdict system (AGREE / REFINE / OBJECT), up to 5 rounds, escalating to the human user if they can't agree.
+---
 
-Forward channel: `codex exec`. Reverse channel: `claude -p` (direct), with local file mailbox as fallback. Copy-based install, no package manager required.
+**English:** `朋友` is a bidirectional consultation protocol for Claude Code × Codex CLI. On plan/risk/ambiguity triggers, one agent sends its draft to the other for a structured AGREE / REFINE / OBJECT verdict, up to 5 rounds, then escalates to you. Direct CLI channels, local file mailbox fallback. Copy-based install.
