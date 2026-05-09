@@ -54,16 +54,19 @@ install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/friend_mailbox_claude.py"
              "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py"
 install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/surface_friend_pending.sh" \
              "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh"
+install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/start_friend_session.sh" \
+             "$CLAUDE_FRIEND/scripts/start_friend_session.sh"
 chmod +x "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py" \
-         "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh"
+         "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh" \
+         "$CLAUDE_FRIEND/scripts/start_friend_session.sh"
 
 echo "[2/5] Install Codex-side 朋友 skill"
 install_file "$SCRIPT_DIR/codex/skills/朋友/SKILL.md" "$CODEX_FRIEND/SKILL.md"
 
 echo "[3/5] Install mailbox bridge + queue"
 mkdir -p "$MAILBOX"
-install_file "$SCRIPT_DIR/scripts/friend_mailbox_bridge.py" "$MAILBOX/friend_mailbox_bridge.py"
-install_file "$SCRIPT_DIR/scripts/friend_queue.py"          "$MAILBOX/friend_queue.py"
+install_file "$SCRIPT_DIR/shared/friend/friend_mailbox_bridge.py" "$MAILBOX/friend_mailbox_bridge.py"
+install_file "$SCRIPT_DIR/shared/friend/friend_queue.py"          "$MAILBOX/friend_queue.py"
 chmod +x "$MAILBOX/friend_mailbox_bridge.py" "$MAILBOX/friend_queue.py"
 
 echo "[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)"

@@ -137,19 +137,23 @@ friend-skill/
 ├── install.ps1
 ├── claude/
 │   └── skills/
-│       └── 朋友/
+│       └── 朋友/                      → 安装到 ~/.claude/skills/朋友/
 │           ├── SKILL.md
 │           ├── POWERSHELL_TIPS.md
 │           └── scripts/
-│               └── friend_mailbox_claude.py    # ClaudeCode 侧 helper：status/read/watch/write
+│               ├── friend_mailbox_claude.py   # ClaudeCode 侧 helper
+│               ├── surface_friend_pending.sh
+│               └── start_friend_session.sh
 ├── codex/
 │   ├── skills/
-│   │   └── 朋友/SKILL.md
-│   └── AGENTS.md.snippet                        # managed-block 模板
-├── scripts/
-│   └── friend_mailbox_bridge.py                 # 共享桥：--watch / --once / --probe / --wait-reply
+│   │   └── 朋友/                      → 安装到 ~/.codex/skills/朋友/
+│   │       └── SKILL.md
+│   └── AGENTS.md.snippet              # managed-block 模板
 └── shared/
-    └── friend/.gitkeep
+    └── friend/                        → 安装到 ~/.shared/friend/
+        ├── friend_mailbox_bridge.py   # 共享桥：--watch / --once / --probe / --wait-reply
+        ├── friend_queue.py
+        └── trust-profile.env.example
 ```
 
 ## 故障排查

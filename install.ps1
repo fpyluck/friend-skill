@@ -43,6 +43,8 @@ Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/friend_mailbox_
              (Join-Path $ClaudeFriend 'scripts/friend_mailbox_claude.py')
 Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/surface_friend_pending.sh') `
              (Join-Path $ClaudeFriend 'scripts/surface_friend_pending.sh')
+Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/start_friend_session.sh') `
+             (Join-Path $ClaudeFriend 'scripts/start_friend_session.sh')
 
 Write-Host '[2/5] Install Codex-side 朋友 skill'
 Install-File (Join-Path $ScriptDir 'codex/skills/朋友/SKILL.md') (Join-Path $CodexFriend 'SKILL.md')
@@ -51,8 +53,8 @@ Write-Host '[3/5] Install mailbox bridge + queue'
 if (-not (Test-Path $Mailbox)) {
     New-Item -ItemType Directory -Path $Mailbox -Force | Out-Null
 }
-Install-File (Join-Path $ScriptDir 'scripts/friend_mailbox_bridge.py') (Join-Path $Mailbox 'friend_mailbox_bridge.py')
-Install-File (Join-Path $ScriptDir 'scripts/friend_queue.py')          (Join-Path $Mailbox 'friend_queue.py')
+Install-File (Join-Path $ScriptDir 'shared/friend/friend_mailbox_bridge.py') (Join-Path $Mailbox 'friend_mailbox_bridge.py')
+Install-File (Join-Path $ScriptDir 'shared/friend/friend_queue.py')          (Join-Path $Mailbox 'friend_queue.py')
 
 Write-Host '[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)'
 $agentsDir = Split-Path -Parent $Agents
