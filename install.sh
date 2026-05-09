@@ -52,15 +52,19 @@ install_file "$SCRIPT_DIR/claude/skills/朋友/SKILL.md"          "$CLAUDE_FRIEN
 install_file "$SCRIPT_DIR/claude/skills/朋友/POWERSHELL_TIPS.md" "$CLAUDE_FRIEND/POWERSHELL_TIPS.md"
 install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/friend_mailbox_claude.py" \
              "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py"
-chmod +x "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py"
+install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/surface_friend_pending.sh" \
+             "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh"
+chmod +x "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py" \
+         "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh"
 
 echo "[2/5] Install Codex-side 朋友 skill"
 install_file "$SCRIPT_DIR/codex/skills/朋友/SKILL.md" "$CODEX_FRIEND/SKILL.md"
 
-echo "[3/5] Install mailbox bridge"
+echo "[3/5] Install mailbox bridge + queue"
 mkdir -p "$MAILBOX"
 install_file "$SCRIPT_DIR/scripts/friend_mailbox_bridge.py" "$MAILBOX/friend_mailbox_bridge.py"
-chmod +x "$MAILBOX/friend_mailbox_bridge.py"
+install_file "$SCRIPT_DIR/scripts/friend_queue.py"          "$MAILBOX/friend_queue.py"
+chmod +x "$MAILBOX/friend_mailbox_bridge.py" "$MAILBOX/friend_queue.py"
 
 echo "[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)"
 mkdir -p "$(dirname "$AGENTS")"

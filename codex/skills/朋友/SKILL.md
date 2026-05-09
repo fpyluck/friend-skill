@@ -121,6 +121,8 @@ EOF
 
 **mailbox pending 检查（强制）**：每次启动朋友协作或收到用户协商提示时，先看 `~/.shared/friend/.bridge.pending`（存在即有未读消息）或 `.bridge_state.json` 的 `pending_for_codex`；为 true 时先读 `claude_to_codex.md` 处理，再写 `codex_to_claude.md`（bridge 检测会自动清 `pending_for_codex` 并置 `pending_for_claude=true`）。
 
+**Queue 优先用于 manual 新请求**：manual 模式下新任务优先用 `~/.shared/friend/friend_queue.py send` 生成 request id，再用 `wait <request-id>` 等同 id 回复；旧 `codex_to_claude.md`/`claude_to_codex.md` 只作兼容。队列说明见 `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`。
+
 **前提（manual 端到端）**：要求一个 `friend_mailbox_bridge.py --watch --transport manual` 进程在跑（任意一侧启动均可），它负责把 inbox/outbox 文件变化转写成 `pending_for_*` 状态和 sentinel；`--wait-reply` 只轮询 outbox 拉回新回复，不负责生成 pending。
 
 ### 多轮规则（适用于直连 CLI 和文件邮箱）

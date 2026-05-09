@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -117,6 +118,10 @@ def mailbox_paths(mailbox: Path | None) -> dict[str, Path]:
         "state": root / ".bridge_state.json",
         "pending": root / ".bridge.pending",
     }
+
+
+def queue_script(paths: dict[str, Path]) -> Path:
+    return paths["root"] / "friend_queue.py"
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -261,6 +266,18 @@ def cmd_surface(args: argparse.Namespace) -> int:
         time.sleep(args.poll_interval)
 
 
+def cmd_queue(args: argparse.Namespace) -> int:
+    paths = mailbox_paths(args.mailbox)
+    command = [
+        sys.executable,
+        str(queue_script(paths)),
+        "--mailbox",
+        str(paths["root"]),
+        *args.queue_args,
+    ]
+    return subprocess.run(command, text=True).returncode
+
+
 def parse_args() -> argparse.Namespace:
     # Shared parent so --mailbox is accepted both before and after the subcommand
     # (e.g. `helper.py --mailbox <p> status` and `helper.py status --mailbox <p>`).
@@ -313,6 +330,9 @@ def parse_args() -> argparse.Namespace:
     source.add_argument("--reply", help="reply text")
     source.add_argument("--reply-file", type=Path, help="file containing reply text")
 
+    queue = sub.add_parser("queue", parents=[common], help="pass through to shared friend_queue.py")
+    queue.add_argument("queue_args", nargs=argparse.REMAINDER)
+
     return parser.parse_args()
 
 
@@ -328,6 +348,8 @@ def main() -> int:
         return cmd_surface(args)
     if args.command == "write":
         return cmd_write(args)
+    if args.command == "queue":
+        return cmd_queue(args)
     raise AssertionError(args.command)
 
 

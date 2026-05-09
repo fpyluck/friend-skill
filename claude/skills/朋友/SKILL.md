@@ -190,6 +190,10 @@ Codex 的方案：<要点>
 
 **mailbox pending 检查（强制）**：每次启动朋友协作或收到用户协商提示时，先看 `~/.shared/friend/.bridge.pending`（存在即有未读消息）或 `.bridge_state.json` 的 `pending_for_claude`；为 true 时先读 `codex_to_claude.md` 处理，再写 `claude_to_codex.md`（bridge 检测 outbox 写入会自动清 `pending_for_claude` 并置 `pending_for_codex=true`）。若要等新消息，可运行 `scripts/friend_mailbox_claude.py watch --print-inbox`；它只读 mailbox，不调用 API，不改全局设置。
 
+**浅 watcher**：若需要让正在运行的 ClaudeCode 更容易看到 pending，但不想自动代答，运行 `scripts/surface_friend_pending.sh`；它只把 pending inbox 复制到 `~/.shared/friend/CLAUDE_PENDING_INBOX.md` 并打印路径，仍由 ClaudeCode 自己判断并用 `write` 写回。
+
+**Queue 优先用于 manual 新请求**：manual 模式下新任务优先处理 `~/.shared/friend/queue/to_claude/<request-id>.md`，用 `scripts/friend_mailbox_claude.py queue next --print-id --print-body` 读取，用 `queue reply <request-id> --reply-file <reply.md>` 写同 id 回复；旧 `codex_to_claude.md`/`claude_to_codex.md` 只作兼容。队列说明见 `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`。
+
 ## 协议词义
 
 - **AGREE**：同意当前方案，可以执行
