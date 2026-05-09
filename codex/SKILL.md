@@ -103,14 +103,14 @@ EOF
 
 ### 人工降级：文件邮箱
 
-直连不可用时，使用本地文件邮箱。若 `~/.shared/friend/friend_mailbox_bridge.py --watch` 已运行，它会自动转交并写回；否则这是人工中转模式。
+直连不可用时，使用本地文件邮箱（人工中转模式）。
 
 | 步骤 | 你（Codex） | 用户 | Claude |
 |---|---|---|---|
 | 1 | 把消息（含 `[FRIEND_CONSULT round=N]` + 完整内容）写入 `~/.shared/friend/codex_to_claude.md`，覆盖 | 把这个路径告诉 Claude | 读文件，按防递归规则回复，写入 `~/.shared/friend/claude_to_codex.md`，覆盖 |
 | 2 | 收到用户转告后读 `~/.shared/friend/claude_to_codex.md` | 把 Claude 的路径告诉你 | — |
 
-写完后若自动桥未运行，必须告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
+写完后必须告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
 
 每轮覆盖前可先 `cp` 备份到 `~/.shared/friend/archive/<round>_<from>.md`（可选）。
 
@@ -169,6 +169,6 @@ Claude 的方案：<要点>
 用于单向告知会影响对方后续行为的 skill / hook / 全局规则 / memory 变更，不走协商多轮。
 
 - 通知第一非空行必须是 `[NOTIFY]`，正文写来源、类别、变更、路径、影响、期望动作、脱敏摘要。
-- 只通知会影响判断或可用能力的长期变更；普通项目代码、临时发现、日志、缓存、密钥、token、私密凭证不通知；可复用经验只写会改变后续行为的最小规则，不建 lesson 仓库。
-- 收到 `[NOTIFY]` 时先回复 `ACK: 已签收，已了解 <要点>`；若等价变更在本侧同样适用，由本侧主导评估并按自身环境适配更新；不要盲目镜像。
+- 只通知会影响判断或可用能力的长期变更；普通项目代码、临时发现、日志、缓存、密钥、token、私密凭证不通知；可复用经验写入编辑维护式经验本，不写流水账。
+- 收到 `[NOTIFY]` 时先回复 `ACK: 已签收，已了解 <要点>`；若等价变更在本侧同样适用，由本侧主导评估并按自身环境适配更新（Codex 侧通常是 AGENTS.md / skill）；不要盲目镜像。
 - 通知暴露真实分歧、风险或歧义时，另起 `[FRIEND_CONSULT]` 协商。
