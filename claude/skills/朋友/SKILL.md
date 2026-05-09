@@ -71,12 +71,16 @@ description: 与本地 Codex 双向协商完成任务的协作 skill。在制定
 
 ### 第一轮：发起咨询（你 → Codex）
 
-`<TMP>` 是本机可写临时目录（例如 `~/.codex/tmp` / `$TMPDIR` / `%TEMP%`），`<N>` 是当前轮次。**bash 示例在下；Windows PowerShell 版见段末。**
+优先走 `codex exec` 直连：先检查 pending（`.bridge.pending` 或 `.bridge_state.json` 的 `pending_for_claude`）和 failure cache；未处于熔断且 codex CLI 可用时，用下方命令发起咨询。直连不可用、命中熔断或环境受阻（例如沙盒只读）时，降级到文件邮箱 manual transport（写 `~/.shared/friend/codex_to_claude.md`，告知用户转告 Codex）。
+
+下面示例为 bash + GNU 工具；PowerShell 用 `@'...'@` heredoc + `$HOME` 替 `~`。`<TMP>` 是本机可写临时目录（例如 `~/.codex/tmp` / `$TMPDIR` / `%TEMP%`），`<N>` 是当前轮次。
+
+> Windows PowerShell 详细命令、`session_id` / `thread_id` 兼容提取、`tee` 同时存档 events.jsonl 等 tips，见 `~/.claude/skills/朋友/POWERSHELL_TIPS.md`。
 
 ```bash
 codex exec --skip-git-repo-check -C "<task_dir>" --json \
   -o "<TMP>/friend_reply_round<N>.txt" \
-  - <<'EOF' | tee "<TMP>/friend_events_round<N>.jsonl" >/dev/null
+  - <<'EOF'
 [FRIEND_CONSULT round=1]
 
 阶段：PLAN  # 或 WORK
@@ -120,34 +124,9 @@ EOF
 
 读取回复：`Read <TMP>/friend_reply_round<N>.txt`。
 
-session_id 提取（多轮续接用）：
-
-```bash
-SESSION_ID=$(grep -o '"session_id":"[^"]*"' "<TMP>/friend_events_round<N>.jsonl" | head -1 | cut -d'"' -f4)
-```
-
-**Windows PowerShell 版**（heredoc + 执行 + 提取）：
-
-```powershell
-$prompt = @'
-<prompt 内容（原样粘贴 [FRIEND_CONSULT round=N] 那段）>
-'@
-$prompt | codex exec --skip-git-repo-check -C "<task_dir>" --json `
-  -o "$env:TEMP\friend_reply_roundN.txt" - |
-  Out-File "$env:TEMP\friend_events_roundN.jsonl" -Encoding utf8
-
-# 读取回复
-Get-Content "$env:TEMP\friend_reply_roundN.txt"
-
-# 提取 session_id
-$sessionId = (Get-Content "$env:TEMP\friend_events_roundN.jsonl" |
-  ForEach-Object { try { $_ | ConvertFrom-Json -EA Stop } catch { $null } } |
-  Where-Object { $_ -and $_.session_id } | Select-Object -First 1).session_id
-```
-
 ### 多轮协商
 
-用提取到的 `session_id` 续接，然后：
+从 `--json` stdout 里抓 `session_id`（事件 `session_configured` 或类似），然后：
 
 ```bash
 codex exec resume <session_id> --skip-git-repo-check --json \
@@ -160,7 +139,7 @@ codex exec resume <session_id> --skip-git-repo-check --json \
 EOF
 ```
 
-注意：`codex exec resume` **不接受 `-C` 标志**（cwd 由原会话锁定）。如果 `session_id` 抓取失败或 resume 报错，退化为新开 `codex exec` 并在 prompt 开头粘贴上一轮完整要点；不要重试超过 1 次。PowerShell 续接：`$prompt | codex exec resume $sessionId --skip-git-repo-check --json -o "$env:TEMP\friend_reply_roundN.txt" -`。
+注意：`codex exec resume` **不接受 `-C` 标志**（cwd 由原会话锁定）。如果 `session_id` 抓取失败，用 `codex exec resume --last ...` 拿最近一次会话；或退化为新开 `codex exec` 并在 prompt 里粘贴上一轮要点。**`codex resume` 的可用形式以 `codex --help` 实测为准。**
 
 - 收到 **REFINE** → 整合后续接发新一轮
 - 收到 **OBJECT** → 同上，附你坚持/接受的理由
@@ -185,11 +164,13 @@ Codex 的方案：<要点>
 
 ## 防递归（关键）
 
-当**你**收到带 `[FRIEND_CONSULT]` 标记（在第一个非空行）的输入，即 Codex 反向咨询你：
+当**你**收到带 `[FRIEND_CONSULT]` 标记（在第一个非空行）的输入：
 
-- **直接回复 AGREE / REFINE / OBJECT，不要再调用 codex exec**
-- 可以读文件 / 跑只读命令以核实事实，但**禁止**反向调用 codex CLI
-- 否则会陷入死循环
+- 回复 AGREE / REFINE / OBJECT
+- **允许** `codex exec resume <thread_id>` 把本轮裁决递送回原发起会话（同协商下一轮）
+- **禁止**新起反向 `[FRIEND_CONSULT]`、不在 resume prompt 里扩大任务范围 / 发起新评审任务 / 要求对方调第三方工具
+- 套娃边界 = "是否新建反向咨询链路"，不是"是否调对方 CLI"
+- 可以读文件 / 跑只读命令以核实事实
 
 只有标记**位于消息开头**才识别为协商，避免文件内容偶然包含该串触发误判。
 
@@ -197,11 +178,17 @@ Codex 的方案：<要点>
 
 当 `codex exec` 直连不可用，或用户告诉你"读 `~/.shared/friend/codex_to_claude.md`"时，走本地文件邮箱。若自动桥已调用你，直接按收到的 `[FRIEND_CONSULT]` / `[NOTIFY]` 回复即可。
 
-1. 读 `~/.shared/friend/codex_to_claude.md`
-2. 第一非空行若为 `[FRIEND_CONSULT round=N]`，按防递归直接回复（AGREE/REFINE/OBJECT），写入 `~/.shared/friend/claude_to_codex.md`（覆盖）
-3. 告诉用户："回复已写入 `~/.shared/friend/claude_to_codex.md`，请转告 Codex 读取"
+1. 读 `~/.shared/friend/codex_to_claude.md`（可用 `scripts/friend_mailbox_claude.py read`）
+2. 第一非空行若为 `[FRIEND_CONSULT round=N]`，按防递归直接回复（AGREE/REFINE/OBJECT），写入 `~/.shared/friend/claude_to_codex.md`（可用 `scripts/friend_mailbox_claude.py write --reply-file <file>`）
+3. 告诉用户："回复已写入 `~/.shared/friend/claude_to_codex.md`，Codex 侧 watcher 会自动拉回；若未启动，请转告 Codex 读取"
 
 多轮在同两份文件来回覆盖即可。
+
+**桥单实例约束**：同机同 mailbox 只允许一个 bridge `--watch` 实例；启动前检查并清理 stale pid/lock（`.bridge_watch.lock` 含 heartbeat，max(3*poll, 30s) 过期视 stale）。
+
+**Transport 分层**：bridge 默认 `--transport manual`（任何系统、零外部依赖、stdlib only）—— 只做协议守卫 + archive + state.pending_for_* + sentinel `.bridge.pending`，**不调** `claude -p`；用户/agent 自己读 mailbox。显式 `--transport claude_cli` 才启自动 dispatch（要求 claude -p 可用），失败走 `failure_cache` 熔断（base TTL 按 classification 分级 5–15min，env `FRIEND_BRIDGE_FAILURE_TTL_SECONDS` 覆盖；指数退避 cap 1h）。`--probe` 在 manual 下只输出状态；`--probe --transport claude_cli` 才真测 claude。
+
+**mailbox pending 检查（强制）**：每次启动朋友协作或收到用户协商提示时，先看 `~/.shared/friend/.bridge.pending`（存在即有未读消息）或 `.bridge_state.json` 的 `pending_for_claude`；为 true 时先读 `codex_to_claude.md` 处理，再写 `claude_to_codex.md`（bridge 检测 outbox 写入会自动清 `pending_for_claude` 并置 `pending_for_codex=true`）。若要等新消息，可运行 `scripts/friend_mailbox_claude.py watch --print-inbox`；它只读 mailbox，不调用 API，不改全局设置。
 
 ## 协议词义
 
@@ -222,10 +209,15 @@ Codex 的方案：<要点>
 
 ## 互通同步机制
 
-单向告知，不走协商多轮。第一非空行必须是 `[NOTIFY]`。
+用于单向告知会影响对方后续行为的 skill / hook / 全局规则 / memory 变更，不走协商多轮。
 
-只在以下两种情况发送：
-- skill / hook / memory / 全局规则发生会影响对方行为的长期变更
-- 工具能力或协商协议命令格式发生变化（如 `codex exec` 参数更新）
+- 通知第一非空行必须是 `[NOTIFY]`，正文必须写来源、类别、改动文件路径、diff 摘要、影响面、期望动作、脱敏摘要。**任何长期规则变更必须发 `[NOTIFY]`；否则两侧会快速分叉。**
+- 只通知会影响判断或可用能力的长期变更；普通项目代码、临时发现、日志、缓存、密钥、token、私密凭证不通知；可复用经验写入编辑维护式经验本，不写流水账。
+- 收到 `[NOTIFY]` 时先回复 `ACK: 已签收，已了解 <要点>`；若等价变更在本侧同样适用，由本侧主导评估并按自身环境适配更新（Claude 侧通常是 memory / skill）；不要盲目镜像。
+- 通知暴露真实分歧、风险或歧义时，另起 `[FRIEND_CONSULT]` 协商。
 
-收到 `[NOTIFY]` 回 `ACK: 已签收，已了解 <要点>`；本侧有等价变更时自行评估适配，不要盲目镜像。暴露分歧时另起 `[FRIEND_CONSULT]`。
+### 可选：跨 clone canonical 指针
+
+若存在 `~/.shared/friend/CURRENT.md`，协商前先读取其中的 `canonical` 路径；进入该路径后，repo / branch / head / dirty / 测试结果必须用实时命令核验，不能把 CURRENT 当事实源。
+
+CURRENT 只允许包含 `updated`、`canonical`、`owner`、`expires`。需要写入时，先读现值：若 `owner != claude` 且当前时间早于 `expires`，不要覆盖，改用 `[NOTIFY] request-handoff`；若 `owner == claude` 或已过期，可用临时文件 + rename 原子覆盖。默认 `expires = updated + 30min`；长协商、离开前或继续持有 canonical 时主动续期（同时重写 `updated` 和 `expires`）。

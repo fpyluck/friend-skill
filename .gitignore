@@ -1,20 +1,15 @@
-# Backups created by installer
-*.bak.*
-
-# OS clutter
-.DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
-*.swp
-
-# Python cache
 __pycache__/
 *.pyc
-
-# Mailbox content (path is included as gitkeep, content is local-only)
-shared/friend/*.md
-!shared/friend/.gitkeep
+*.pyo
+.bak.*
+.bridge_state.json
+.bridge.lock
+.bridge_watch.lock
+.bridge.pending
+bridge.log.jsonl
+bridge.nohup.log
+bridge.pid
+codex_to_claude.md
+claude_to_codex.md
 shared/friend/archive/
+shared/friend/.claude_surface_seen.json

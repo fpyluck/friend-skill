@@ -1,0 +1,16 @@
+<!-- BEGIN friend-skill (managed by friend-skill installer; do not edit between markers) -->
+## 朋友 skill — 与 Claude Code 协商
+
+详细规则见 `~/.codex/skills/朋友/SKILL.md`。要点：
+
+- **强制触发**：制定计划阶段、上下文压力大、任务复杂或有歧义、用户用了"重要/关键/小心"等高风险词、涉及破坏性操作
+- **询问用户**：简单或难度难判的任务
+- **手动触发**：用户输入 `/朋友` 或说"问问 claude / 和朋友商量 / 叫上朋友"
+- **协商方式**：优先直连 `claude -p --output-format json`；失败时走 `~/.shared/friend/codex_to_claude.md` ↔ `claude_to_codex.md` 文件邮箱。bridge 默认 `--transport manual` 只做协议守卫 / archive / `pending_for_*` 状态 / sentinel `.bridge.pending`，**不调** `claude -p`；显式 `--transport claude_cli` 才启自动 dispatch
+- **跨 clone canonical 指针**：协商前若 `~/.shared/friend/CURRENT.md` 存在，先读其中的 `canonical` 路径；进入该路径用实时命令核验事实，不要把 CURRENT 当事实源
+- **多轮**：最多 5 轮，达不成一致则升级给用户
+- **防递归**：收到 `[FRIEND_CONSULT]` 时回复 AGREE/REFINE/OBJECT；允许 `claude -p --resume <session_id>` 把本轮裁决递送回原会话；禁止新起反向 `[FRIEND_CONSULT]` 或在 resume prompt 里扩大任务
+- **治理底线**：长期规则变更必须通过 `[NOTIFY]` 同步，包含改动文件路径、diff 摘要、影响面、期望动作；代改对方入口文件需先 NOTIFY/授权；链路故障时代改后立刻通告 diff
+- **桥启动解释器**：启动自动桥时按平台选择：Windows 用 `python` 或 `py`，Linux/macOS 用 `python3`
+- **桥单实例约束**：同机同 mailbox 只允许一个 bridge `--watch` 实例；启动前检查并清理 stale pid/lock
+<!-- END friend-skill -->
