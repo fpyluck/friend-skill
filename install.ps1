@@ -1,18 +1,22 @@
-# 朋友 skill installer (PowerShell 5.1+)
-# Installs to ~/.claude/skills/朋友/, ~/.codex/skills/朋友/, ~/.shared/friend/
+# 朋友 + 减法 skill installer (PowerShell 5.1+)
+# Installs to ~/.claude/skills/{朋友,减法}/, ~/.codex/skills/{朋友,减法}/, ~/.shared/friend/
 
 $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
-$ClaudeDst = Join-Path $HOME '.claude\skills\朋友\SKILL.md'
-$CodexDst  = Join-Path $HOME '.codex\skills\朋友\SKILL.md'
+$ClaudeFriendDst = Join-Path $HOME '.claude\skills\朋友\SKILL.md'
+$CodexFriendDst  = Join-Path $HOME '.codex\skills\朋友\SKILL.md'
+$ClaudeSubtractDst = Join-Path $HOME '.claude\skills\减法\SKILL.md'
+$CodexSubtractDst  = Join-Path $HOME '.codex\skills\减法\SKILL.md'
 $AgentsFile = Join-Path $HOME '.codex\AGENTS.md'
 $MailboxDir = Join-Path $HOME '.shared\friend'
 
-$ClaudeSrc = Join-Path $ScriptDir 'claude\skills\朋友\SKILL.md'
-$CodexSrc  = Join-Path $ScriptDir 'codex\skills\朋友\SKILL.md'
+$ClaudeFriendSrc = Join-Path $ScriptDir 'claude\skills\朋友\SKILL.md'
+$CodexFriendSrc  = Join-Path $ScriptDir 'codex\skills\朋友\SKILL.md'
+$ClaudeSubtractSrc = Join-Path $ScriptDir 'claude\skills\减法\SKILL.md'
+$CodexSubtractSrc  = Join-Path $ScriptDir 'codex\skills\减法\SKILL.md'
 $Snippet   = Join-Path $ScriptDir 'codex\AGENTS.md.snippet'
 
 function Backup-IfExists {
@@ -38,10 +42,12 @@ function Install-Skill {
   Write-Host "  ✓ 已安装 → $Dst"
 }
 
-Install-Skill -Src $ClaudeSrc -Dst $ClaudeDst -Label '[1/4] 安装 Claude 端 skill'
-Install-Skill -Src $CodexSrc  -Dst $CodexDst  -Label '[2/4] 安装 Codex 端 skill'
+Install-Skill -Src $ClaudeFriendSrc   -Dst $ClaudeFriendDst   -Label '[1/6] 安装 Claude 端朋友 skill'
+Install-Skill -Src $CodexFriendSrc    -Dst $CodexFriendDst    -Label '[2/6] 安装 Codex 端朋友 skill'
+Install-Skill -Src $ClaudeSubtractSrc -Dst $ClaudeSubtractDst -Label '[3/6] 安装 Claude 端减法 skill'
+Install-Skill -Src $CodexSubtractSrc  -Dst $CodexSubtractDst  -Label '[4/6] 安装 Codex 端减法 skill'
 
-Write-Host '[3/4] 追加全局指针到 ~/.codex/AGENTS.md'
+Write-Host '[5/6] 追加全局指针到 ~/.codex/AGENTS.md'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $AgentsFile) | Out-Null
 $alreadyHas = $false
 if (Test-Path -LiteralPath $AgentsFile) {
@@ -64,12 +70,13 @@ if ($alreadyHas) {
   }
 }
 
-Write-Host '[4/4] 创建邮箱目录 ~/.shared/friend/'
+Write-Host '[6/6] 创建邮箱目录 ~/.shared/friend/'
 New-Item -ItemType Directory -Force -Path $MailboxDir | Out-Null
 Write-Host "  ✓ $MailboxDir"
 
 Write-Host ''
 Write-Host '安装完成。验证：'
 Write-Host '  - 在 Claude Code 输入 /朋友 应见到此 skill'
+Write-Host '  - Claude/Codex 均已安装朋友和减法 skill'
 Write-Host '  - 在 Codex 启动时 ~/.codex/AGENTS.md 会被读取'
 Write-Host "  - 邮箱目录就绪：$MailboxDir"

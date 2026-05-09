@@ -69,34 +69,56 @@ description: 与本地 Claude Code 双向协商完成任务的协作 skill。在
 - 相关文件指针: <按需 @ 引用或绝对路径列表；没有写 N/A>
 ```
 
-### 反向链路：文件邮箱（默认方式）
+### 第一轮：发起咨询（你 → Claude）
 
-由于本机 `claude -p` 受网关/token 限制不通，反向通信走本地文件邮箱，用户做邮差。
+优先走直连 Claude Code CLI。不要为直连临时覆盖 `ANTHROPIC_BASE_URL` 或硬编码本地网关；如果用户明确给了可用入口，再按用户提供的入口执行。
+
+```bash
+claude -p --output-format json \
+  --add-dir "<task_dir>" \
+  --allowedTools=Read,Grep,Glob,LS \
+  - <<'EOF'
+[FRIEND_CONSULT round=1]
+
+阶段：PLAN  # 或 WORK
+任务：<用户原始请求要点>
+## 项目交接（首次必填；不涉及本地工程可写 N/A）
+<按上方模板填写>
+
+我的草案：
+<计划 / 方案 / 关键决策点 / 已发现的事实>
+
+待评审：
+1. 是否有遗漏 / 错误 / 更优解
+2. 我没考虑到的风险点
+3. 决议：AGREE / REFINE / OBJECT
+EOF
+```
+
+要点：
+- 不需要 Claude 读本地文件时，可省略 `--add-dir` 和 `--allowedTools`，把必要摘要放进 prompt。
+- 需要读本地文件时，用一个或多个 `--add-dir <目录>` 明确授权；默认仍是只读咨询，不让 Claude 改文件。
+- 读取 JSON 里的 `result` 作为回复；保留 `session_id`，后续轮次可用 `claude -p --resume <session_id> ...` 续接。
+- 命令非 0 退出、连接/API 响应异常、权限不足或超时：补齐参数后最多重试 1 次。认证错误不要反复重试，改用人工降级或升级给用户。
+
+### 人工降级：文件邮箱
+
+直连不可用时，使用本地文件邮箱。这是人工中转模式，不是自动通道。
 
 | 步骤 | 你（Codex） | 用户 | Claude |
 |---|---|---|---|
 | 1 | 把消息（含 `[FRIEND_CONSULT round=N]` + 完整内容）写入 `~/.shared/friend/codex_to_claude.md`，覆盖 | 把这个路径告诉 Claude | 读文件，按防递归规则回复，写入 `~/.shared/friend/claude_to_codex.md`，覆盖 |
 | 2 | 收到用户转告后读 `~/.shared/friend/claude_to_codex.md` | 把 Claude 的路径告诉你 | — |
 
-写完后告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
+写完后必须告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
 
 每轮覆盖前可先 `cp` 备份到 `~/.shared/friend/archive/<round>_<from>.md`（可选）。
 
-### 多轮规则（适用于上面文件邮箱及任何替代通道）
+### 多轮规则（适用于直连 CLI 和文件邮箱）
 
 - 收到 **REFINE** → 整合后续接
 - 收到 **OBJECT** → 同上，附理由
 - **最多 5 轮**。5 轮仍分歧 → 升级给用户
-
-### `claude -p` 备选（默认禁用）
-
-未来网关问题修复后可启用：
-
-```bash
-ANTHROPIC_BASE_URL=<LOCAL_ANTHROPIC_BASE_URL> claude -p --output-format json "..."
-```
-
-`<LOCAL_ANTHROPIC_BASE_URL>` 按本机实际填，本机此刻是 `http://127.0.0.1:15721`。当前实测三种组合均失败（HTTP 200 空响应或 cloudflare 400），网关不完整支持 `/v1/messages` POST。除非另有可用 Anthropic API 入口，不要走这条。
 
 ### 升级给用户
 

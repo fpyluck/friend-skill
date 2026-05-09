@@ -116,7 +116,7 @@ EOF
 - `--json`：输出 JSONL 事件流，含 session_id（在 stdout 里），从中解析
 - `-o <file>`：把最终 agent 消息写入文件，便于读取（避免 stdout 编码乱）
 - `- <<'EOF'`：从 stdin 读 prompt，HEREDOC 保护特殊字符
-- 超时建议 7200000，前台执行；CLI 报错、空响应或超时：重试 1 次，仍失败就升级给用户，不继续硬猜。
+- 超时建议 7200000，前台执行；CLI 非 0 退出、连接/API 响应异常、权限不足或超时：补齐参数后最多重试 1 次。认证错误不要反复重试，改用人工降级或升级给用户。
 
 读取回复：`Read <TMP>/friend_reply_round<N>.txt`。
 
@@ -168,9 +168,9 @@ Codex 的方案：<要点>
 
 只有标记**位于消息开头**才识别为协商，避免文件内容偶然包含该串触发误判。
 
-## 反向链路：文件邮箱
+## 人工降级：文件邮箱
 
-由于本机 Codex 调 `claude -p` 受网关/token 限制不通，反向消息走文件邮箱。当用户告诉你"读 `~/.shared/friend/codex_to_claude.md`"或类似话：
+当 `codex exec` 直连不可用，或用户告诉你"读 `~/.shared/friend/codex_to_claude.md`"时，走本地文件邮箱。这是人工中转模式，不是自动通道。
 
 1. 读 `~/.shared/friend/codex_to_claude.md`
 2. 第一非空行若为 `[FRIEND_CONSULT round=N]`，按防递归直接回复（AGREE/REFINE/OBJECT），写入 `~/.shared/friend/claude_to_codex.md`（覆盖）
