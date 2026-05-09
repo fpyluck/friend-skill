@@ -11,5 +11,3 @@ bridge.nohup.log
 bridge.pid
 codex_to_claude.md
 claude_to_codex.md
-shared/friend/archive/
-shared/friend/.claude_surface_seen.json
