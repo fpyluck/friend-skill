@@ -1,5 +1,5 @@
 # 朋友 + 减法 skill installer (PowerShell 5.1+)
-# Installs to ~/.claude/skills/{朋友,减法}/, ~/.codex/skills/{朋友,减法}/, ~/.shared/friend/
+# Installs skills and the optional mailbox bridge under ~/.shared/friend/
 
 $ErrorActionPreference = 'Stop'
 
@@ -12,11 +12,13 @@ $ClaudeSubtractDst = Join-Path $HOME '.claude\skills\减法\SKILL.md'
 $CodexSubtractDst  = Join-Path $HOME '.codex\skills\减法\SKILL.md'
 $AgentsFile = Join-Path $HOME '.codex\AGENTS.md'
 $MailboxDir = Join-Path $HOME '.shared\friend'
+$BridgeDst = Join-Path $MailboxDir 'friend_mailbox_bridge.py'
 
 $ClaudeFriendSrc = Join-Path $ScriptDir 'claude\skills\朋友\SKILL.md'
 $CodexFriendSrc  = Join-Path $ScriptDir 'codex\skills\朋友\SKILL.md'
 $ClaudeSubtractSrc = Join-Path $ScriptDir 'claude\skills\减法\SKILL.md'
 $CodexSubtractSrc  = Join-Path $ScriptDir 'codex\skills\减法\SKILL.md'
+$BridgeSrc = Join-Path $ScriptDir 'scripts\friend_mailbox_bridge.py'
 $Snippet   = Join-Path $ScriptDir 'codex\AGENTS.md.snippet'
 
 function Backup-IfExists {
@@ -42,12 +44,18 @@ function Install-Skill {
   Write-Host "  ✓ 已安装 → $Dst"
 }
 
-Install-Skill -Src $ClaudeFriendSrc   -Dst $ClaudeFriendDst   -Label '[1/6] 安装 Claude 端朋友 skill'
-Install-Skill -Src $CodexFriendSrc    -Dst $CodexFriendDst    -Label '[2/6] 安装 Codex 端朋友 skill'
-Install-Skill -Src $ClaudeSubtractSrc -Dst $ClaudeSubtractDst -Label '[3/6] 安装 Claude 端减法 skill'
-Install-Skill -Src $CodexSubtractSrc  -Dst $CodexSubtractDst  -Label '[4/6] 安装 Codex 端减法 skill'
+Install-Skill -Src $ClaudeFriendSrc   -Dst $ClaudeFriendDst   -Label '[1/7] 安装 Claude 端朋友 skill'
+Install-Skill -Src $CodexFriendSrc    -Dst $CodexFriendDst    -Label '[2/7] 安装 Codex 端朋友 skill'
+Install-Skill -Src $ClaudeSubtractSrc -Dst $ClaudeSubtractDst -Label '[3/7] 安装 Claude 端减法 skill'
+Install-Skill -Src $CodexSubtractSrc  -Dst $CodexSubtractDst  -Label '[4/7] 安装 Codex 端减法 skill'
 
-Write-Host '[5/6] 追加全局指针到 ~/.codex/AGENTS.md'
+Write-Host '[5/7] 创建邮箱目录 ~/.shared/friend/'
+New-Item -ItemType Directory -Force -Path $MailboxDir | Out-Null
+Write-Host "  ✓ $MailboxDir"
+
+Install-Skill -Src $BridgeSrc -Dst $BridgeDst -Label '[6/7] 安装自动邮箱桥'
+
+Write-Host '[7/7] 追加全局指针到 ~/.codex/AGENTS.md'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $AgentsFile) | Out-Null
 $alreadyHas = $false
 if (Test-Path -LiteralPath $AgentsFile) {
@@ -70,13 +78,10 @@ if ($alreadyHas) {
   }
 }
 
-Write-Host '[6/6] 创建邮箱目录 ~/.shared/friend/'
-New-Item -ItemType Directory -Force -Path $MailboxDir | Out-Null
-Write-Host "  ✓ $MailboxDir"
-
 Write-Host ''
 Write-Host '安装完成。验证：'
 Write-Host '  - 在 Claude Code 输入 /朋友 应见到此 skill'
 Write-Host '  - Claude/Codex 均已安装朋友和减法 skill'
 Write-Host '  - 在 Codex 启动时 ~/.codex/AGENTS.md 会被读取'
 Write-Host "  - 邮箱目录就绪：$MailboxDir"
+Write-Host "  - 自动桥可用：python $BridgeDst --watch --add-dir <项目目录>"

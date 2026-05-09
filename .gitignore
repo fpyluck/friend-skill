@@ -10,6 +10,10 @@ Thumbs.db
 .idea/
 *.swp
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Mailbox content (path is included as gitkeep, content is local-only)
 shared/friend/*.md
 !shared/friend/.gitkeep

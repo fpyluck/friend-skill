@@ -103,14 +103,14 @@ EOF
 
 ### 人工降级：文件邮箱
 
-直连不可用时，使用本地文件邮箱。这是人工中转模式，不是自动通道。
+直连不可用时，使用本地文件邮箱。若 `~/.shared/friend/friend_mailbox_bridge.py --watch` 已运行，它会自动转交并写回；否则这是人工中转模式。
 
 | 步骤 | 你（Codex） | 用户 | Claude |
 |---|---|---|---|
 | 1 | 把消息（含 `[FRIEND_CONSULT round=N]` + 完整内容）写入 `~/.shared/friend/codex_to_claude.md`，覆盖 | 把这个路径告诉 Claude | 读文件，按防递归规则回复，写入 `~/.shared/friend/claude_to_codex.md`，覆盖 |
 | 2 | 收到用户转告后读 `~/.shared/friend/claude_to_codex.md` | 把 Claude 的路径告诉你 | — |
 
-写完后必须告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
+写完后若自动桥未运行，必须告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
 
 每轮覆盖前可先 `cp` 备份到 `~/.shared/friend/archive/<round>_<from>.md`（可选）。
 

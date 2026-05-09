@@ -170,7 +170,7 @@ Codex 的方案：<要点>
 
 ## 人工降级：文件邮箱
 
-当 `codex exec` 直连不可用，或用户告诉你"读 `~/.shared/friend/codex_to_claude.md`"时，走本地文件邮箱。这是人工中转模式，不是自动通道。
+当 `codex exec` 直连不可用，或用户告诉你"读 `~/.shared/friend/codex_to_claude.md`"时，走本地文件邮箱。若自动桥已调用你，直接按收到的 `[FRIEND_CONSULT]` / `[NOTIFY]` 回复即可。
 
 1. 读 `~/.shared/friend/codex_to_claude.md`
 2. 第一非空行若为 `[FRIEND_CONSULT round=N]`，按防递归直接回复（AGREE/REFINE/OBJECT），写入 `~/.shared/friend/claude_to_codex.md`（覆盖）
