@@ -71,12 +71,12 @@ description: 与本地 Codex 双向协商完成任务的协作 skill。在制定
 
 ### 第一轮：发起咨询（你 → Codex）
 
-下面示例为 bash + GNU 工具；PowerShell 用 `@'...'@` heredoc + `$HOME` 替 `~`。`<TMP>` 是本机可写临时目录（例如 `~/.codex/tmp` / `$TMPDIR` / `%TEMP%`），`<N>` 是当前轮次。
+`<TMP>` 是本机可写临时目录（例如 `~/.codex/tmp` / `$TMPDIR` / `%TEMP%`），`<N>` 是当前轮次。**bash 示例在下；Windows PowerShell 版见段末。**
 
 ```bash
 codex exec --skip-git-repo-check -C "<task_dir>" --json \
   -o "<TMP>/friend_reply_round<N>.txt" \
-  - <<'EOF'
+  - <<'EOF' | tee "<TMP>/friend_events_round<N>.jsonl" >/dev/null
 [FRIEND_CONSULT round=1]
 
 阶段：PLAN  # 或 WORK
@@ -120,9 +120,34 @@ EOF
 
 读取回复：`Read <TMP>/friend_reply_round<N>.txt`。
 
+session_id 提取（多轮续接用）：
+
+```bash
+SESSION_ID=$(grep -o '"session_id":"[^"]*"' "<TMP>/friend_events_round<N>.jsonl" | head -1 | cut -d'"' -f4)
+```
+
+**Windows PowerShell 版**（heredoc + 执行 + 提取）：
+
+```powershell
+$prompt = @'
+<prompt 内容（原样粘贴 [FRIEND_CONSULT round=N] 那段）>
+'@
+$prompt | codex exec --skip-git-repo-check -C "<task_dir>" --json `
+  -o "$env:TEMP\friend_reply_roundN.txt" - |
+  Out-File "$env:TEMP\friend_events_roundN.jsonl" -Encoding utf8
+
+# 读取回复
+Get-Content "$env:TEMP\friend_reply_roundN.txt"
+
+# 提取 session_id
+$sessionId = (Get-Content "$env:TEMP\friend_events_roundN.jsonl" |
+  ForEach-Object { try { $_ | ConvertFrom-Json -EA Stop } catch { $null } } |
+  Where-Object { $_ -and $_.session_id } | Select-Object -First 1).session_id
+```
+
 ### 多轮协商
 
-从 `--json` stdout 里抓 `session_id`（事件 `session_configured` 或类似），然后：
+用提取到的 `session_id` 续接，然后：
 
 ```bash
 codex exec resume <session_id> --skip-git-repo-check --json \
@@ -135,7 +160,7 @@ codex exec resume <session_id> --skip-git-repo-check --json \
 EOF
 ```
 
-注意：`codex exec resume` **不接受 `-C` 标志**（cwd 由原会话锁定）。如果 `session_id` 抓取失败，用 `codex exec resume --last ...` 拿最近一次会话；或退化为新开 `codex exec` 并在 prompt 里粘贴上一轮要点。**`codex resume` 的可用形式以 `codex --help` 实测为准。**
+注意：`codex exec resume` **不接受 `-C` 标志**（cwd 由原会话锁定）。如果 `session_id` 抓取失败或 resume 报错，退化为新开 `codex exec` 并在 prompt 开头粘贴上一轮完整要点；不要重试超过 1 次。PowerShell 续接：`$prompt | codex exec resume $sessionId --skip-git-repo-check --json -o "$env:TEMP\friend_reply_roundN.txt" -`。
 
 - 收到 **REFINE** → 整合后续接发新一轮
 - 收到 **OBJECT** → 同上，附你坚持/接受的理由
@@ -197,9 +222,10 @@ Codex 的方案：<要点>
 
 ## 互通同步机制
 
-用于单向告知会影响对方后续行为的 skill / hook / 全局规则 / memory 变更，不走协商多轮。
+单向告知，不走协商多轮。第一非空行必须是 `[NOTIFY]`。
 
-- 通知第一非空行必须是 `[NOTIFY]`，正文写来源、类别、变更、路径、影响、期望动作、脱敏摘要。
-- 只通知会影响判断或可用能力的长期变更；普通项目代码、临时发现、日志、缓存、密钥、token、私密凭证不通知；可复用经验写入编辑维护式经验本，不写流水账。
-- 收到 `[NOTIFY]` 时先回复 `ACK: 已签收，已了解 <要点>`；若等价变更在本侧同样适用，由本侧主导评估并按自身环境适配更新（Claude 侧通常是 memory / skill）；不要盲目镜像。
-- 通知暴露真实分歧、风险或歧义时，另起 `[FRIEND_CONSULT]` 协商。
+只在以下两种情况发送：
+- skill / hook / memory / 全局规则发生会影响对方行为的长期变更
+- 工具能力或协商协议命令格式发生变化（如 `codex exec` 参数更新）
+
+收到 `[NOTIFY]` 回 `ACK: 已签收，已了解 <要点>`；本侧有等价变更时自行评估适配，不要盲目镜像。暴露分歧时另起 `[FRIEND_CONSULT]`。
