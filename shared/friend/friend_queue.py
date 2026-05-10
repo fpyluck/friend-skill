@@ -55,6 +55,13 @@ def read_json(path: Path, default: Any) -> Any:
         return default
 
 
+def default_mailbox() -> Path:
+    env = os.environ.get("FRIEND_MAILBOX") or os.environ.get("FRIEND_MAILBOX_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return Path(__file__).resolve().parent
+
+
 def queue_paths(mailbox: Path) -> dict[str, Path]:
     root = mailbox.expanduser().resolve()
     queue = root / "queue"
@@ -63,7 +70,6 @@ def queue_paths(mailbox: Path) -> dict[str, Path]:
         "queue": queue,
         "to_claude": queue / "to_claude",
         "to_codex": queue / "to_codex",
-        "done": queue / "done",
         "meta": queue / "meta.json",
     }
 
@@ -188,7 +194,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mailbox", type=Path, default=Path("~/.shared/friend"))
+    parser.add_argument("--mailbox", type=Path, default=default_mailbox())
     sub = parser.add_subparsers(dest="command", required=True)
 
     send = sub.add_parser("send")
@@ -223,7 +229,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     paths = queue_paths(args.mailbox)
-    for key in ("to_claude", "to_codex", "done"):
+    for key in ("to_claude", "to_codex"):
         paths[key].mkdir(parents=True, exist_ok=True)
     if args.command == "send":
         return cmd_send(args)

@@ -42,11 +42,10 @@ def find_mailbox_root() -> Path:
     if env_root:
         return Path(env_root).expanduser()
 
-    candidates = [
-        Path("/mnt/c/Users/83233/.shared/friend"),
-        Path.home() / ".shared" / "friend",
-    ]
-    candidates.extend(Path("/mnt/c/Users").glob("*/.shared/friend"))
+    candidates = [Path.home() / ".shared" / "friend"]
+    mnt_users = Path("/mnt/c/Users")
+    if mnt_users.is_dir():
+        candidates.extend(mnt_users.glob("*/.shared/friend"))
 
     for candidate in candidates:
         if (candidate / "friend_queue.py").exists() or (candidate / ".bridge_state.json").exists():

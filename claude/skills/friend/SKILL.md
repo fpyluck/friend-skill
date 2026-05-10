@@ -1,6 +1,6 @@
 ---
-name: 朋友
-description: Peer consultation skill — Claude × Codex bilateral review. Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter. Manual trigger: /朋友, "问问 codex", "和朋友商量", "叫上朋友".
+name: friend
+description: 'Peer consultation skill — Claude × Codex bilateral review. Triggers when user writes "朋友", "/friend", or "friend" as a standalone message or invocation, or says "问问 codex", "和朋友商量", or "叫上朋友". Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter.'
 ---
 
 # Friend (朋友) — Claude × Codex Peer Consultation
@@ -29,7 +29,7 @@ Single-file change, clear fix, obviously straightforward execution.
 
 ### Manual trigger
 
-Owner types `/朋友`, says "问问 codex", "和朋友商量", "叫上朋友" → enter consultation immediately.
+Owner types `/friend`, says "问问 codex", "和朋友商量", "叫上朋友" → enter consultation immediately.
 
 ### Suggest handoff
 
@@ -43,13 +43,23 @@ When context pressure is high or a role switch / session end is signaled, sugges
 
 **First non-blank line** must be `[FRIEND_CONSULT round=N]`, N starting at 1. Only messages starting with this token are treated as consultation — prevents accidental matches inside file content.
 
+### Gate preflight
+
+Before starting a new consultation, prefer the shared read-only gate:
+`python C:\Users\83233\.shared\friend\friend_gate.py --mailbox C:\Users\83233\.shared\friend status --intent friend --json`
+
+For a prepared outbound message, check it with:
+`python C:\Users\83233\.shared\friend\friend_gate.py --mailbox C:\Users\83233\.shared\friend check-consult <message-file> --recipient codex --transport <direct|queue|mailbox>`
+
+Use the gate to catch pending mailbox state, queue depth, bridge health, failure cache, and obvious secret patterns. It does not replace the consultation protocol.
+
 ### Default scope: read-only advice
 
 Consultation requests opinions only. To ask Codex to modify files directly, write explicitly: "Please directly modify: <path(s)>". Otherwise Codex gives suggestions only.
 
 ### Project context (required for round=1 of new sessions)
 
-Include a compact context block when the task involves a local project, virtual env, container, WSL, devcontainer, remote, or monorepo. If Codex has no prior context (new session, no `session_id` to resume), always send the full block — even on logically subsequent rounds.
+Include a compact context block when the task involves a local project, virtual env, container, WSL, devcontainer, remote, or monorepo. If Codex has no prior context (new session, no resume id to use), always send the full block — even on logically subsequent rounds.
 
 Principles:
 - Absolute paths only. Unknown or N/A → write `N/A`.
@@ -90,10 +100,10 @@ Append sandbox flags based on `FRIEND_TRUST_LEVEL` (see Trust Level section).
 
 Check `.bridge.pending` / `.bridge_state.json` `pending_for_claude` and failure cache first. If clear and codex CLI is available:
 
-> Windows PowerShell details, `session_id`/`thread_id` extraction, tee archiving: see `~/.claude/skills/朋友/POWERSHELL_TIPS.md`
+> Windows PowerShell details, `session_id`/`thread_id` extraction, tee archiving: see `C:\Users\83233\.claude\skills\friend\POWERSHELL_TIPS.md`
 
 ```bash
-codex exec --skip-git-repo-check -C "<task_dir>" --json \
+codex exec --skip-git-repo-check -C "<task_dir>" --json --sandbox workspace-write \
   -o "<TMP>/friend_reply_round<N>.txt" \
   - <<'EOF'
 [FRIEND_CONSULT round=1]
@@ -114,16 +124,16 @@ Review points:
 EOF
 ```
 
-Key flags: `--skip-git-repo-check` (not limited to git repos), `-C` (sets cwd for Codex file access), `--json` (JSONL event stream with `session_id`), `-o` (writes final reply to file), `- <<'EOF'` (stdin heredoc). Recommended timeout: 7200000. On error or timeout: retry once with corrected params. Do not loop-retry auth errors — degrade to manual or escalate to user.
+Key flags: `--skip-git-repo-check` (not limited to git repos), `-C` (sets cwd for Codex file access), `--json` (JSONL event stream with a resume id: `thread_id` on newer Codex CLI, `session_id` on older CLI), `--sandbox workspace-write` (default trust level; use `--sandbox read-only` for safe mode), `-o` (writes final reply to file), `- <<'EOF'` (stdin heredoc). Recommended timeout: 7200000. On error or timeout: retry once with corrected params. Do not loop-retry auth errors — degrade to manual or escalate to user.
 
 Read reply: `Read <TMP>/friend_reply_round<N>.txt`
 
 ### Multi-round
 
-Extract `session_id` from `--json` stdout (event `session_configured` or similar), then:
+Extract the resume id from `--json` stdout (`thread_id` on newer Codex CLI, `session_id` on older CLI; event `session_configured` or similar), then:
 
 ```bash
-codex exec resume <session_id> --skip-git-repo-check --json \
+codex exec resume <thread_id-or-session_id> --skip-git-repo-check --json --sandbox workspace-write \
   -o "<TMP>/friend_reply_round<N>.txt" \
   - <<'EOF'
 [FRIEND_CONSULT round=2]
@@ -133,7 +143,7 @@ Please re-evaluate: AGREE / REFINE / OBJECT
 EOF
 ```
 
-`codex exec resume` does **not** accept `-C`. If `session_id` fails, use `--last` or start a new session with the previous round's key points.
+`codex exec resume` does **not** accept `-C`. If the resume id fails, use `--last` or start a new session with the previous round's key points.
 
 - **REFINE** → incorporate and continue
 - **OBJECT** → same, include your rationale
@@ -151,22 +161,32 @@ Please decide.
 
 Prefix reply with: "Agreed with Codex:" then proceed.
 
+### After consensus: choose the smallest work route
+
+After `AGREE`, choose the lowest-coupling route that satisfies the consensus. Do not duplicate `helper` or `handoff` protocols here.
+
+- **Self-execute**: Claude does the work. Use `朋友` again for final review when risk, complexity, or the consensus calls for peer review.
+- **Counterpart-execute**: Codex should do the work while Claude reviews. Use the existing write-scope mechanism: `Please directly modify: <path(s)>`. Include owned paths/tasks, validation, and return expectations.
+- **Helper route**: work is parallelizable, has multiple owners, or needs external CLI helpers. The `朋友` consensus should state goal, owners, integrator/review-by, validation, and open risks; then invoke `helper`/`帮手`. `helper` owns launch/return briefs and the final review packet.
+
+If the route is unclear, ask the user or state a minimal assumption. If the route ends at a session boundary or role switch, also see "Suggest handoff" above. During an anti-recursion response, only return `AGREE` / `REFINE` / `OBJECT`; the originating session chooses the route.
+
 ## Anti-recursion (critical)
 
 When you receive input where **the first non-blank line** is `[FRIEND_CONSULT round=N]`:
 - Reply AGREE / REFINE / OBJECT
-- **Allowed**: `codex exec resume <thread_id>` to deliver this verdict back to the originating session
+- **Allowed**: `codex exec resume <thread_id-or-session_id>` to deliver this verdict back to the originating session
 - **Prohibited**: starting a reverse `[FRIEND_CONSULT]`; expanding scope in a resume prompt; asking the counterpart to invoke third-party tools
 - Nesting boundary = "does this create a new reverse consultation chain?" (not "does this call the counterpart's CLI?")
 - You may read files / run read-only commands to verify facts
 
 ## Manual Fallback: File Mailbox
 
-When `codex exec` is unavailable, or the user says "read `~/.shared/friend/codex_to_claude.md`":
+When `codex exec` is unavailable, or the user says "read `C:\Users\83233\.shared\friend\codex_to_claude.md`":
 
-1. Read `~/.shared/friend/codex_to_claude.md` (or `scripts/friend_mailbox_claude.py read`)
-2. If first non-blank line is `[FRIEND_CONSULT round=N]`, reply per anti-recursion rules, write to `~/.shared/friend/claude_to_codex.md` (or `scripts/friend_mailbox_claude.py write --reply-file <file>`)
-3. Tell user: "Reply written to `~/.shared/friend/claude_to_codex.md`. Codex's watcher will pick it up; if not running, please relay to Codex."
+1. Read `C:\Users\83233\.shared\friend\codex_to_claude.md` (or `scripts/friend_mailbox_claude.py read`)
+2. If first non-blank line is `[FRIEND_CONSULT round=N]`, reply per anti-recursion rules, write to `C:\Users\83233\.shared\friend\claude_to_codex.md` (or `scripts/friend_mailbox_claude.py write --reply-file <file>`)
+3. Tell user: "Reply written to `C:\Users\83233\.shared\friend\claude_to_codex.md`. Codex's watcher will pick it up; if not running, please relay to Codex."
 
 Multi-round: overwrite the same two files each time.
 
@@ -176,9 +196,9 @@ Multi-round: overwrite the same two files each time.
 
 **Pending check (mandatory)**: before starting any consultation or when the user prompts, check `.bridge.pending` or `pending_for_claude` in `.bridge_state.json`; if true, process `codex_to_claude.md` first.
 
-**Shallow watcher**: `scripts/surface_friend_pending.sh` copies pending inbox to `~/.shared/friend/CLAUDE_PENDING_INBOX.md` without auto-replying.
+**Shallow watcher**: `scripts/surface_friend_pending.sh` copies pending inbox to `C:\Users\83233\.shared\friend\CLAUDE_PENDING_INBOX.md` without auto-replying.
 
-**Queue (preferred for manual new requests)**: read `~/.shared/friend/queue/to_claude/<id>.md` via `scripts/friend_mailbox_claude.py queue next`; reply with `queue reply <id> --reply-file <file>`. Old mailbox files remain for compatibility. See `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`.
+**Queue (preferred for manual new requests)**: read `C:\Users\83233\.shared\friend\queue\to_claude\<id>.md` via `scripts/friend_mailbox_claude.py queue next`; reply with `queue reply <id> --reply-file <file>`. Old mailbox files remain for compatibility. See `C:\Users\83233\.shared\friend\FRIEND_QUEUE_HANDOFF.md`.
 
 ## Trust Level and Permissions
 
@@ -204,7 +224,7 @@ Append the corresponding flag to `codex exec`. If `FRIEND_CODEX_EXEC_EXTRA_FLAGS
 
 Priority: CLI arg > env var > default. Legacy numeric values (`0/1/2`) map to `manual/auto/eager` with a deprecation warning; permission level always defaults to `workspace`.
 
-Config via env var or CLI arg only; see `~/.shared/friend/trust-profile.env.example`.
+Config via env var or CLI arg only; see `C:\Users\83233\.shared\friend\trust-profile.env.example`.
 
 ## Protocol Vocabulary
 
@@ -235,6 +255,6 @@ For unilateral notification of changes affecting the counterpart's future behavi
 
 ### Optional: cross-clone canonical pointer
 
-If `~/.shared/friend/CURRENT.md` exists, read its `canonical` path before consulting. Verify repo/branch/head/dirty state with live commands — do not treat CURRENT as a fact source.
+If `C:\Users\83233\.shared\friend\CURRENT.md` exists, read its `canonical` path before consulting. Verify repo/branch/head/dirty state with live commands — do not treat CURRENT as a fact source.
 
 CURRENT may only contain `updated`, `canonical`, `owner`, `expires`. Before writing: if `owner != claude` and not yet expired, do not overwrite — send `[NOTIFY] request-handoff` instead. If `owner == claude` or expired: atomic temp-file + rename. Default `expires = updated + 30min`; renew both `updated` and `expires` in long sessions.

@@ -6,6 +6,13 @@
 
 ## What's new
 
+### v2.2 — 2026-05-10
+
+- **Slug 重命名**：`朋友/` 目录全部改为 `friend/`（`claude/skills/friend`、`codex/skills/friend`）；不再发布旧的 `朋友` 目录。
+- **helper skill 加入发行版**：新增 `helper` skill（Claude + Codex 双端），负责协商后的分工执行（work card 格式，外部 CLI helper 参考资料）。
+- **共享运行时扩展**：新增 `friend_gate.py`（权限把关与格式验证），新增 gate 测试套件（12 个测试）；安装器一并同步 `friend_gate.py`、`tests/`、`trust-profile.env.example`。
+- **Debug 修复**：`start_friend_session.sh`、`new_handoff.py` 不再硬编码路径；`AGENTS.md.snippet` 路径修正为 `~/.codex/skills/friend/SKILL.md`；所有脚本 LF 标准化。
+
 ### v2.1 — 2026-05-10
 
 - **handoff (交班) skill 加入发行版**：两侧都新增了 `handoff` skill。`朋友` 负责实时协商和消息传递；`handoff` 负责把当前工程状态打包成下一个 agent（或同一个 agent 重置上下文后）能直接接手的持久文档。两个 skill 互相感知，协商中产生的决策建议写进 `decisions_and_changes`，未解决分歧写进 `open_issues`。

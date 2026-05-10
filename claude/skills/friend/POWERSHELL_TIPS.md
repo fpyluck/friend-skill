@@ -10,7 +10,7 @@ $prompt = @'
 <prompt content — paste from the template in SKILL.md>
 '@
 
-$prompt | codex exec --skip-git-repo-check -C "<task_dir>" --json `
+$prompt | codex exec --skip-git-repo-check -C "<task_dir>" --json --sandbox workspace-write `
   -o "$env:TEMP\friend_reply_roundN.txt" - |
   Out-File "$env:TEMP\friend_events_roundN.jsonl" -Encoding utf8
 
@@ -34,7 +34,7 @@ SESSION_ID=$(grep -oE '"(session_id|thread_id)":"[^"]*"' "$TMP/friend_events_rou
 ## Multi-round continuation (PowerShell)
 
 ```powershell
-$prompt | codex exec resume $sessionId --skip-git-repo-check --json `
+$prompt | codex exec resume $sessionId --skip-git-repo-check --json --sandbox workspace-write `
   -o "$env:TEMP\friend_reply_roundN.txt" -
 ```
 
@@ -43,7 +43,7 @@ Note: `codex exec resume` does not accept `-C`; cwd is locked to the original se
 ## Capturing both events.jsonl and the reply (bash tee pattern)
 
 ```bash
-codex exec --skip-git-repo-check -C "<task_dir>" --json \
+codex exec --skip-git-repo-check -C "<task_dir>" --json --sandbox workspace-write \
   -o "<TMP>/friend_reply_round<N>.txt" \
   - <<'EOF' | tee "<TMP>/friend_events_round<N>.jsonl" >/dev/null
 [FRIEND_CONSULT round=1]

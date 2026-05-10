@@ -1,0 +1,4 @@
+interface:
+  display_name: "Helper / 帮手"
+  short_description: "与 Claude/CLI 分工并回到朋友互审"
+  default_prompt: "Use $helper to split a large task with Claude and optional external CLI helpers after $friend consensus, then coordinate completion and mutual review."

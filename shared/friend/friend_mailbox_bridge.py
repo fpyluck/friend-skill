@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Codex -> Claude file mailbox bridge with failure cache + watch singleton.
 
-- mailbox path defaults to ~/.shared/friend; pass --mailbox <abs> when ~ is ambiguous (e.g. WSL with Windows-side mailbox).
+- mailbox path defaults to this script's directory; pass --mailbox <abs> to override.
 - claude binary discovered via shutil.which("claude"); override with --claude-bin.
 - Two locks with separate lifetimes:
     .bridge.lock        short-lived per-dispatch lock
@@ -118,6 +118,13 @@ def home_collapse(path: str | Path) -> str:
     if s.startswith(home):
         return "~" + s[len(home):]
     return s
+
+
+def default_mailbox() -> Path:
+    env = os.environ.get("FRIEND_MAILBOX") or os.environ.get("FRIEND_MAILBOX_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return Path(__file__).resolve().parent
 
 
 def redact_text(text: str, max_len: int = 80) -> str:
@@ -686,6 +693,7 @@ def handle_manual_tick(
     state = migrate_state(read_json(state_path, {}))
     state["transport"] = "manual"
     changed = False
+    inbox_protocol_changed = False
 
     inbox_text = read_stable_text(inbox, args.stable_delay)
     if inbox_text is not None:
@@ -712,6 +720,7 @@ def handle_manual_tick(
                 state["pending_for_claude"] = True
                 state["pending_inbox_sha256"] = in_digest  # track which inbox message triggered pending
                 state["pending_for_codex"] = False
+                inbox_protocol_changed = True
                 append_log(
                     log_path,
                     {"event": "inbox_pending", "marker": in_marker, "sha256_short": in_digest[:12]},
@@ -746,9 +755,10 @@ def handle_manual_tick(
             state["last_outbox_marker"] = out_marker
             if out_protocol:
                 state["pending_for_codex"] = True
-                # Only clear pending_for_claude if the inbox SHA hasn't changed since we set it pending.
-                # An unrelated outbox write must not silently drop an unread inbox message.
-                if state.get("pending_inbox_sha256") and state.get("last_inbox_sha256") and \
+                # Only clear a pending inbox that was already pending before this tick.
+                # If inbox changed earlier in the same tick, both sides must remain pending.
+                if not inbox_protocol_changed and \
+                        state.get("pending_inbox_sha256") and state.get("last_inbox_sha256") and \
                         state["pending_inbox_sha256"] == state["last_inbox_sha256"]:
                     state["pending_for_claude"] = False
                     state.pop("pending_inbox_sha256", None)
@@ -1165,7 +1175,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
              "manual=no dispatch; auto=failure_cache+TTL (default); eager=shorter TTL for transient failures. "
              "Overrides FRIEND_DISPATCH_MODE env var.",
     )
-    parser.add_argument("--mailbox", type=Path, default=Path("~/.shared/friend"))
+    parser.add_argument("--mailbox", type=Path, default=default_mailbox())
     parser.add_argument("--add-dir", action="append", default=[], help="directory Claude may read")
     parser.add_argument(
         "--allowed-tools",

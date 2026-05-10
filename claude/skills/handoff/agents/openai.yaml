@@ -1,0 +1,4 @@
+interface:
+  display_name: "Handoff / 交班"
+  short_description: "让 Claude 与 Codex 轮流接手同一工程不断线"
+  default_prompt: "Use $handoff to prepare a concise project handoff so Claude and Codex can continue the same work without losing context."

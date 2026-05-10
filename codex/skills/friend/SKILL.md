@@ -1,6 +1,6 @@
 ---
-name: 朋友
-description: Peer consultation skill — Codex × Claude bilateral review. Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter. Manual trigger: /朋友, "问问 claude", "和朋友商量", "叫上朋友".
+name: friend
+description: 'Peer consultation skill — Codex × Claude bilateral review. Triggers when user writes "朋友", "/friend", or "friend" as a standalone message or invocation, or says "问问 claude", "和朋友商量", or "叫上朋友". Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter.'
 ---
 
 # Friend (朋友) — Codex × Claude Peer Consultation
@@ -29,7 +29,7 @@ Single-file change, clear fix, obviously straightforward execution.
 
 ### Manual trigger
 
-Owner types `/朋友`, says "问问 claude", "和朋友商量", "叫上朋友" → enter consultation immediately.
+Owner types `/friend`, says "问问 claude", "和朋友商量", "叫上朋友" → enter consultation immediately.
 
 ### Suggest handoff
 
@@ -42,6 +42,16 @@ When context pressure is high or a role switch / session end is signaled, sugges
 ### Marker format (critical)
 
 **First non-blank line** must be `[FRIEND_CONSULT round=N]`, N starting at 1. Only messages starting with this token are treated as consultation — prevents accidental matches inside file content.
+
+### Gate preflight
+
+Before starting a new consultation, prefer the shared read-only gate:
+`python3 /mnt/c/Users/83233/.shared/friend/friend_gate.py --mailbox /mnt/c/Users/83233/.shared/friend status --intent friend --json`
+
+For a prepared outbound message, check it with:
+`python3 /mnt/c/Users/83233/.shared/friend/friend_gate.py --mailbox /mnt/c/Users/83233/.shared/friend check-consult <message-file> --recipient claude --transport <direct|queue|mailbox>`
+
+Use the gate to catch pending mailbox state, queue depth, bridge health, failure cache, and obvious secret patterns. It does not replace the consultation protocol.
 
 ### Default scope: read-only advice
 
@@ -80,10 +90,9 @@ Template:
 Prefer `claude_cli` direct connection: check pending and failure cache first. If clear and `claude -p` is available, use this command. If not, degrade to file mailbox. Do not temporarily override `ANTHROPIC_BASE_URL` or hardcode a local gateway; use a known working endpoint only if the owner explicitly provides one.
 
 ```bash
-claude -p --output-format json \
+cat <<'EOF' | claude -p --output-format json \
   --add-dir "<task_dir>" \
-  --allowedTools=Read,Grep,Glob,LS \
-  - <<'EOF'
+  --allowedTools=Read,Grep,Glob,LS
 [FRIEND_CONSULT round=1]
 
 Phase: PLAN  # or WORK
@@ -105,6 +114,7 @@ EOF
 Notes:
 - Omit `--add-dir` and `--allowedTools` when Claude does not need local file access.
 - Use one or more `--add-dir <dir>` to grant read access; default is read-only advice, not file writes.
+- On this host, avoid `claude -p ... - <<'EOF'`; pipe stdin without `-` or pass the prompt as an argument.
 - Parse `result` from the JSON response; retain `session_id` for multi-round continuation: `claude -p --resume <session_id> --output-format json --add-dir <dir>` (verify exact form with `claude --help`).
 - If `session_id` is unavailable, start a new session with the previous round's key points, or fall back to mailbox.
 - On non-zero exit, connection error, or timeout: retry once with corrected params. Do not loop-retry auth errors — degrade to manual or escalate to user.
@@ -115,18 +125,18 @@ When `claude_cli` is unavailable:
 
 | Step | You (Codex) | User | Claude |
 |---|---|---|---|
-| 1 | Write message (with `[FRIEND_CONSULT round=N]` + full content) to `~/.shared/friend/codex_to_claude.md` | Tell Claude the path | Claude reads, replies per anti-recursion rules, writes to `~/.shared/friend/claude_to_codex.md` |
-| 2 | Read `~/.shared/friend/claude_to_codex.md` after user relays | Tell you the path | — |
+| 1 | Write message (with `[FRIEND_CONSULT round=N]` + full content) to `/mnt/c/Users/83233/.shared/friend/codex_to_claude.md` | Tell Claude the path | Claude reads, replies per anti-recursion rules, writes to `/mnt/c/Users/83233/.shared/friend/claude_to_codex.md` |
+| 2 | Read `/mnt/c/Users/83233/.shared/friend/claude_to_codex.md` after user relays | Tell you the path | — |
 
-After writing, if no auto-dispatch is available, start `friend_mailbox_bridge.py --wait-reply` to poll for `claude_to_codex.md`; if it times out, tell the user: "Please ask Claude to read `~/.shared/friend/codex_to_claude.md`."
+After writing, if no auto-dispatch is available, start `friend_mailbox_bridge.py --wait-reply` to poll for `claude_to_codex.md`; if it times out, tell the user: "Please ask Claude to read `/mnt/c/Users/83233/.shared/friend/codex_to_claude.md`."
 
-**Single-instance constraint**: one bridge `--watch` process per mailbox max; clean stale lock before starting (`.bridge_watch.lock` heartbeat, stale threshold: max(3×poll, 30s)). Start bridge with: `python3 ~/.shared/friend/friend_mailbox_bridge.py --watch --mailbox ~/.shared/friend` (pass `--mailbox` explicitly; required in WSL to avoid path confusion).
+**Single-instance constraint**: one bridge `--watch` process per mailbox max; clean stale lock before starting (`.bridge_watch.lock` heartbeat, stale threshold: max(3×poll, 30s)). Start bridge with: `python3 /mnt/c/Users/83233/.shared/friend/friend_mailbox_bridge.py --watch --mailbox /mnt/c/Users/83233/.shared/friend` (pass `--mailbox` explicitly; required in WSL to avoid path confusion).
 
 **Transport layers**: bridge defaults to `--transport manual` (stdlib only, no external deps) — protocol guard + archive + `pending_for_*` state + `.bridge.pending` sentinel; **no `claude -p`**. Use `--transport claude_cli` for auto-dispatch; failures use `failure_cache` circuit-break (TTL 5–15 min by error class, env `FRIEND_BRIDGE_FAILURE_TTL_SECONDS`; backoff cap 1h).
 
 **Pending check (mandatory)**: before starting any consultation or when the user prompts, check `.bridge.pending` or `pending_for_codex` in `.bridge_state.json`; if true, read `claude_to_codex.md` and process first.
 
-**Queue (preferred for manual new requests)**: use `~/.shared/friend/friend_queue.py send` to generate a request ID, then `wait <request-id>` to poll for Claude's reply. Old mailbox files remain for compatibility. See `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`.
+**Queue (preferred for manual new requests)**: use `/mnt/c/Users/83233/.shared/friend/friend_queue.py send` to generate a request ID, then `wait <request-id>` to poll for Claude's reply. Old mailbox files remain for compatibility. See `/mnt/c/Users/83233/.shared/friend/FRIEND_QUEUE_HANDOFF.md`.
 
 **End-to-end manual prerequisite**: a `friend_mailbox_bridge.py --watch --transport manual` process must be running (either side); it converts inbox/outbox file changes into `pending_for_*` state and the sentinel file.
 
@@ -147,6 +157,16 @@ Please decide.
 ### Reaching consensus (AGREE)
 
 Prefix reply with: "Agreed with Claude:" then proceed.
+
+### After consensus: choose the smallest work route
+
+After `AGREE`, choose the lowest-coupling route that satisfies the consensus. Do not duplicate `helper` or `handoff` protocols here.
+
+- **Self-execute**: Codex does the work. Use `朋友` again for final review when risk, complexity, or the consensus calls for peer review.
+- **Counterpart-execute**: Claude should do the work while Codex reviews. Use the existing write-scope mechanism: `Please directly modify: <path(s)>`. Include owned paths/tasks, validation, and return expectations.
+- **Helper route**: work is parallelizable, has multiple owners, or needs external CLI helpers. The `朋友` consensus should state goal, owners, integrator/review-by, validation, and open risks; then invoke `helper`/`帮手`. `helper` owns launch/return briefs and the final review packet.
+
+If the route is unclear, ask the user or state a minimal assumption. If the route ends at a session boundary or role switch, also see "Suggest handoff" above. During an anti-recursion response, only return `AGREE` / `REFINE` / `OBJECT`; the originating session chooses the route.
 
 ## Anti-recursion (critical)
 
@@ -181,7 +201,7 @@ Apply the corresponding flag when calling `claude -p` directly; bridge applies i
 
 Priority: CLI arg > env var > default. Legacy numeric values (`0/1/2`) map to `manual/auto/eager` with a deprecation warning; permission level always defaults to `workspace`.
 
-Config via env var or CLI arg only; see `~/.shared/friend/trust-profile.env.example`.
+Config via env var or CLI arg only; see `/mnt/c/Users/83233/.shared/friend/trust-profile.env.example`.
 
 ## Protocol Vocabulary
 
@@ -212,6 +232,6 @@ For unilateral notification of changes affecting the counterpart's future behavi
 
 ### Optional: cross-clone canonical pointer
 
-If `~/.shared/friend/CURRENT.md` exists, read its `canonical` path before consulting. Verify repo/branch/head/dirty state with live commands — do not treat CURRENT as a fact source.
+If `/mnt/c/Users/83233/.shared/friend/CURRENT.md` exists, read its `canonical` path before consulting. Verify repo/branch/head/dirty state with live commands — do not treat CURRENT as a fact source.
 
 CURRENT may only contain `updated`, `canonical`, `owner`, `expires`. Before writing: if `owner != codex` and not yet expired, do not overwrite — send `[NOTIFY] request-handoff` instead. If `owner == codex` or expired: atomic temp-file + rename. Default `expires = updated + 30min`; renew both `updated` and `expires` in long sessions.

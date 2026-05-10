@@ -235,7 +235,7 @@ def cmd_surface(args: argparse.Namespace) -> int:
                         "# Pending Codex Friend Request\n\n"
                         "ClaudeCode: read this request, reason normally, then write a protocol reply with:\n\n"
                         "```bash\n"
-                        "python3 ~/.claude/skills/朋友/scripts/friend_mailbox_claude.py write --reply-file <reply.md>\n"
+                        "python3 ~/.claude/skills/friend/scripts/friend_mailbox_claude.py write --reply-file <reply.md>\n"
                         "```\n\n"
                         "Do not start a reverse FRIEND_CONSULT chain while answering this request.\n\n"
                         "---\n\n"

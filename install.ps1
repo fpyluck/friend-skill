@@ -1,5 +1,4 @@
 # friend-skill installer (PowerShell)
-# Installs the friend (朋友) and handoff (交班) skills.
 # Idempotent; backs up existing files; updates AGENTS.md via managed block.
 
 [CmdletBinding()]
@@ -9,10 +8,14 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 
-$ClaudeFriend  = Join-Path $HOME '.claude/skills/朋友'
-$CodexFriend   = Join-Path $HOME '.codex/skills/朋友'
-$ClaudeHandoff = Join-Path $HOME '.claude/skills/handoff'
-$CodexHandoff  = Join-Path $HOME '.codex/skills/handoff'
+$ClaudeSkills = Join-Path $HOME '.claude/skills'
+$CodexSkills  = Join-Path $HOME '.codex/skills'
+$ClaudeFriend = Join-Path $ClaudeSkills 'friend'
+$ClaudeHandoff = Join-Path $ClaudeSkills 'handoff'
+$ClaudeHelper = Join-Path $ClaudeSkills 'helper'
+$CodexFriend  = Join-Path $CodexSkills 'friend'
+$CodexHandoff = Join-Path $CodexSkills 'handoff'
+$CodexHelper  = Join-Path $CodexSkills 'helper'
 $Mailbox = Join-Path $HOME '.shared/friend'
 $Agents  = Join-Path $HOME '.codex/AGENTS.md'
 
@@ -39,36 +42,37 @@ function Install-File {
     Write-Host "  ✓ $Dst"
 }
 
-Write-Host '[1/7] Install Claude-side 朋友 skill'
-Install-File (Join-Path $ScriptDir 'claude/skills/朋友/SKILL.md')              (Join-Path $ClaudeFriend 'SKILL.md')
-Install-File (Join-Path $ScriptDir 'claude/skills/朋友/POWERSHELL_TIPS.md')    (Join-Path $ClaudeFriend 'POWERSHELL_TIPS.md')
-Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/friend_mailbox_claude.py') `
-             (Join-Path $ClaudeFriend 'scripts/friend_mailbox_claude.py')
-Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/surface_friend_pending.sh') `
-             (Join-Path $ClaudeFriend 'scripts/surface_friend_pending.sh')
-Install-File (Join-Path $ScriptDir 'claude/skills/朋友/scripts/start_friend_session.sh') `
-             (Join-Path $ClaudeFriend 'scripts/start_friend_session.sh')
+function Install-Tree {
+    param([string]$SrcDir, [string]$DstDir)
+    if (-not (Test-Path $SrcDir)) {
+        Write-Error "source dir missing: $SrcDir"
+    }
+    $srcRoot = (Resolve-Path $SrcDir).Path.TrimEnd('\', '/')
+    Get-ChildItem -Path $SrcDir -File -Recurse |
+        Where-Object { $_.FullName -notmatch '[\\/]+__pycache__[\\/]' -and $_.Name -notlike '*.pyc' } |
+        ForEach-Object {
+            $rel = $_.FullName.Substring($srcRoot.Length).TrimStart('\', '/')
+            Install-File $_.FullName (Join-Path $DstDir $rel)
+        }
+}
 
-Write-Host '[2/7] Install Codex-side 朋友 skill'
-Install-File (Join-Path $ScriptDir 'codex/skills/朋友/SKILL.md') (Join-Path $CodexFriend 'SKILL.md')
+Write-Host '[1/5] Install Claude-side skills'
+Install-Tree (Join-Path $ScriptDir 'claude/skills/friend')  $ClaudeFriend
+Install-Tree (Join-Path $ScriptDir 'claude/skills/handoff') $ClaudeHandoff
+Install-Tree (Join-Path $ScriptDir 'claude/skills/helper')  $ClaudeHelper
 
-Write-Host '[3/7] Install Claude-side handoff skill'
-Install-File (Join-Path $ScriptDir 'claude/skills/handoff/SKILL.md') (Join-Path $ClaudeHandoff 'SKILL.md')
+Write-Host '[2/5] Install Codex-side skills'
+Install-Tree (Join-Path $ScriptDir 'codex/skills/friend')  $CodexFriend
+Install-Tree (Join-Path $ScriptDir 'codex/skills/handoff') $CodexHandoff
+Install-Tree (Join-Path $ScriptDir 'codex/skills/helper')  $CodexHelper
 
-Write-Host '[4/7] Install Codex-side handoff skill'
-Install-File (Join-Path $ScriptDir 'codex/skills/handoff/SKILL.md')                   (Join-Path $CodexHandoff 'SKILL.md')
-Install-File (Join-Path $ScriptDir 'codex/skills/handoff/agents/openai.yaml')         (Join-Path $CodexHandoff 'agents/openai.yaml')
-Install-File (Join-Path $ScriptDir 'codex/skills/handoff/assets/handoff-template.md') (Join-Path $CodexHandoff 'assets/handoff-template.md')
-Install-File (Join-Path $ScriptDir 'codex/skills/handoff/scripts/new_handoff.py')     (Join-Path $CodexHandoff 'scripts/new_handoff.py')
-
-Write-Host '[5/7] Install mailbox bridge + queue'
+Write-Host '[3/5] Install shared friend runtime'
 if (-not (Test-Path $Mailbox)) {
     New-Item -ItemType Directory -Path $Mailbox -Force | Out-Null
 }
-Install-File (Join-Path $ScriptDir 'shared/friend/friend_mailbox_bridge.py') (Join-Path $Mailbox 'friend_mailbox_bridge.py')
-Install-File (Join-Path $ScriptDir 'shared/friend/friend_queue.py')          (Join-Path $Mailbox 'friend_queue.py')
+Install-Tree (Join-Path $ScriptDir 'shared/friend') $Mailbox
 
-Write-Host '[6/7] Update ~/.codex/AGENTS.md (managed block, idempotent)'
+Write-Host '[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)'
 $agentsDir = Split-Path -Parent $Agents
 if (-not (Test-Path $agentsDir)) {
     New-Item -ItemType Directory -Path $agentsDir -Force | Out-Null
@@ -100,13 +104,17 @@ if (-not (Test-Path $Agents)) {
     }
 }
 
-Write-Host '[7/7] Verify'
+Write-Host '[5/5] Verify'
 $check = @(
-    (Join-Path $ClaudeFriend  'SKILL.md'),
-    (Join-Path $CodexFriend   'SKILL.md'),
+    (Join-Path $ClaudeFriend 'SKILL.md'),
     (Join-Path $ClaudeHandoff 'SKILL.md'),
-    (Join-Path $CodexHandoff  'SKILL.md'),
-    (Join-Path $Mailbox       'friend_mailbox_bridge.py'),
+    (Join-Path $ClaudeHelper 'SKILL.md'),
+    (Join-Path $CodexFriend  'SKILL.md'),
+    (Join-Path $CodexHandoff 'SKILL.md'),
+    (Join-Path $CodexHelper 'SKILL.md'),
+    (Join-Path $Mailbox      'friend_gate.py'),
+    (Join-Path $Mailbox      'friend_mailbox_bridge.py'),
+    (Join-Path $Mailbox      'friend_queue.py'),
     $Agents
 )
 foreach ($f in $check) {
@@ -124,7 +132,5 @@ Next steps:
       python ~/.shared/friend/friend_mailbox_bridge.py --watch --transport claude_cli
   - Diagnose claude -p:
       python ~/.shared/friend/friend_mailbox_bridge.py --probe --transport claude_cli
-  - Create a new handoff (Codex side):
-      python ~/.codex/skills/handoff/scripts/new_handoff.py --project-key <slug> --title "<title>"
 
 '@ | Write-Host

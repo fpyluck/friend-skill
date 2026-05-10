@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Project continuity handoff skill for Codex and Claude using the 朋友 mailbox. Use when the user asks for 交班, handoff, handover, 接力, 轮流继续同一工程, asks Codex or Claude to take over the same project, asks the same agent to resume after a context reset or continuation break, or needs a persistent status package with project background, goals, environment, file locations, solved and unsolved issues, error history, and next actions.
+description: 'Project continuity handoff skill for Codex and Claude using the 朋友 mailbox. Triggers when user writes "交班", "/handoff", or "handoff" as a standalone message or invocation, or asks for handover, 接力, 轮流继续同一工程, asks Codex or Claude to take over the same project, asks the same agent to resume after a context reset or continuation break, or needs a persistent status package with project background, goals, environment, file locations, solved and unsolved issues, error history, and next actions.'
 ---
 
 # Handoff
@@ -15,10 +15,10 @@ Treat the handoff as current working state for the next agent, not a diary: merg
 
 1. Align the shared channel before writing:
    - Read the local `朋友` skill and the counterpart skill if present:
-     `/mnt/c/Users/83233/.codex/skills/朋友/SKILL.md`
-     `/mnt/c/Users/83233/.claude/skills/朋友/SKILL.md`
+     `/mnt/c/Users/83233/.codex/skills/friend/SKILL.md`
+     `/mnt/c/Users/83233/.claude/skills/friend/SKILL.md`
    - Use mailbox root `/mnt/c/Users/83233/.shared/friend` unless the active `朋友` skill says otherwise.
-   - If `CURRENT.md` exists, treat `canonical` only as a pointer; enter that path and verify `pwd`, git branch/head/dirty state, and relevant files with live commands. `CURRENT.md` ownership protocol (owner/expires/atomic rename) follows the local `朋友` skill.
+   - If `CURRENT.md` exists, treat `canonical` only as a pointer; enter that path and verify `pwd`, git branch/head/dirty state, and relevant files with live commands. `CURRENT.md` canonical pointer protocol follows the local `朋友` skill.
    - If `.bridge.pending` or `.bridge_state.json` shows pending work for this agent, resolve it according to `朋友` before overwriting any mailbox file.
 
 2. Choose a project key before every handoff:
@@ -37,6 +37,10 @@ Treat the handoff as current working state for the next agent, not a diary: merg
    - Add `--project-local` only for repo-local handoffs.
 
 4. Update the existing file by editing, merging, and replacing stale facts. Do not append a diary. Keep each section ≤5 items. Keep the handoff useful for the next agent's first 5 minutes. After material changes, refresh the sections they invalidate first, especially `current_objective`, `next_actions`, `environment_commands`, `file_map`, and failure-related `error_ledger`. If a `朋友` consultation shaped the work, record consensus in `decisions_and_changes`, unresolved disagreement in `open_issues`, and only collaboration nuance in `agent_notes`.
+
+5. Before sharing or claiming the handoff is ready, run the read-only gate:
+   `python3 /mnt/c/Users/83233/.shared/friend/friend_gate.py --mailbox /mnt/c/Users/83233/.shared/friend check-handoff <handoff-path>`
+   Secret-pattern hits are hard failures; structure issues are warnings to fix when they affect continuity.
 
 ## Required Content
 

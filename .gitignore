@@ -11,3 +11,8 @@ bridge.nohup.log
 bridge.pid
 codex_to_claude.md
 claude_to_codex.md
+queue/
+archive/
+handoffs/*.md
+CLAUDE_PENDING_INBOX.md
+CLAUDE_FRIEND_SESSION_PROMPT.md
