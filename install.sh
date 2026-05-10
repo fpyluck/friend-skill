@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # friend-skill installer (bash/zsh; cross-platform: Linux, macOS, WSL)
+# Installs the friend (朋友) and handoff (交班) skills.
 # Idempotent: re-runnable; backs up existing files; updates AGENTS.md via managed block.
 
 set -euo pipefail
@@ -13,8 +14,8 @@ for arg in "$@"; do
       cat <<EOF
 Usage: bash install.sh
 
-Installs the friend (朋友) skill into Claude Code and Codex local skill dirs,
-plus a shared mailbox bridge under ~/.shared/friend/.
+Installs the friend (朋友) and handoff (交班) skills into Claude Code and Codex
+local skill dirs, plus a shared mailbox bridge under ~/.shared/friend/.
 
 Idempotent: existing files backed up to <path>.bak.<timestamp>.
 EOF
@@ -24,6 +25,8 @@ done
 
 CLAUDE_FRIEND="$HOME/.claude/skills/朋友"
 CODEX_FRIEND="$HOME/.codex/skills/朋友"
+CLAUDE_HANDOFF="$HOME/.claude/skills/handoff"
+CODEX_HANDOFF="$HOME/.codex/skills/handoff"
 MAILBOX="$HOME/.shared/friend"
 AGENTS="$HOME/.codex/AGENTS.md"
 
@@ -47,7 +50,7 @@ install_file() {
   echo "  ✓ $dst"
 }
 
-echo "[1/5] Install Claude-side 朋友 skill"
+echo "[1/7] Install Claude-side 朋友 skill"
 install_file "$SCRIPT_DIR/claude/skills/朋友/SKILL.md"          "$CLAUDE_FRIEND/SKILL.md"
 install_file "$SCRIPT_DIR/claude/skills/朋友/POWERSHELL_TIPS.md" "$CLAUDE_FRIEND/POWERSHELL_TIPS.md"
 install_file "$SCRIPT_DIR/claude/skills/朋友/scripts/friend_mailbox_claude.py" \
@@ -60,16 +63,26 @@ chmod +x "$CLAUDE_FRIEND/scripts/friend_mailbox_claude.py" \
          "$CLAUDE_FRIEND/scripts/surface_friend_pending.sh" \
          "$CLAUDE_FRIEND/scripts/start_friend_session.sh"
 
-echo "[2/5] Install Codex-side 朋友 skill"
+echo "[2/7] Install Codex-side 朋友 skill"
 install_file "$SCRIPT_DIR/codex/skills/朋友/SKILL.md" "$CODEX_FRIEND/SKILL.md"
 
-echo "[3/5] Install mailbox bridge + queue"
+echo "[3/7] Install Claude-side handoff skill"
+install_file "$SCRIPT_DIR/claude/skills/handoff/SKILL.md" "$CLAUDE_HANDOFF/SKILL.md"
+
+echo "[4/7] Install Codex-side handoff skill"
+install_file "$SCRIPT_DIR/codex/skills/handoff/SKILL.md"                          "$CODEX_HANDOFF/SKILL.md"
+install_file "$SCRIPT_DIR/codex/skills/handoff/agents/openai.yaml"                "$CODEX_HANDOFF/agents/openai.yaml"
+install_file "$SCRIPT_DIR/codex/skills/handoff/assets/handoff-template.md"        "$CODEX_HANDOFF/assets/handoff-template.md"
+install_file "$SCRIPT_DIR/codex/skills/handoff/scripts/new_handoff.py"            "$CODEX_HANDOFF/scripts/new_handoff.py"
+chmod +x "$CODEX_HANDOFF/scripts/new_handoff.py"
+
+echo "[5/7] Install mailbox bridge + queue"
 mkdir -p "$MAILBOX"
 install_file "$SCRIPT_DIR/shared/friend/friend_mailbox_bridge.py" "$MAILBOX/friend_mailbox_bridge.py"
 install_file "$SCRIPT_DIR/shared/friend/friend_queue.py"          "$MAILBOX/friend_queue.py"
 chmod +x "$MAILBOX/friend_mailbox_bridge.py" "$MAILBOX/friend_queue.py"
 
-echo "[4/5] Update ~/.codex/AGENTS.md (managed block, idempotent)"
+echo "[6/7] Update ~/.codex/AGENTS.md (managed block, idempotent)"
 mkdir -p "$(dirname "$AGENTS")"
 SNIPPET_FILE="$SCRIPT_DIR/codex/AGENTS.md.snippet"
 if [ ! -f "$SNIPPET_FILE" ]; then
@@ -99,8 +112,9 @@ else
   echo "  note: existing file did not have managed-block markers; legacy entries (if any) were left in place. Remove them manually if duplicated."
 fi
 
-echo "[5/5] Verify"
+echo "[7/7] Verify"
 for f in "$CLAUDE_FRIEND/SKILL.md" "$CODEX_FRIEND/SKILL.md" \
+         "$CLAUDE_HANDOFF/SKILL.md" "$CODEX_HANDOFF/SKILL.md" \
          "$MAILBOX/friend_mailbox_bridge.py" "$AGENTS"; do
   [ -f "$f" ] && echo "  ✓ $f" || echo "  ✗ missing $f"
 done
@@ -117,4 +131,6 @@ Next steps:
       python3 ~/.shared/friend/friend_mailbox_bridge.py --watch --transport claude_cli --mailbox ~/.shared/friend
   - Diagnose claude -p:
       python3 ~/.shared/friend/friend_mailbox_bridge.py --probe --transport claude_cli
+  - Create a new handoff (Codex side):
+      python3 ~/.codex/skills/handoff/scripts/new_handoff.py --project-key <slug> --title "<title>"
 EOF

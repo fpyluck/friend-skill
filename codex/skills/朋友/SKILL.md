@@ -1,77 +1,83 @@
 ---
 name: 朋友
-description: 与本地 Claude Code 双向协商完成任务的协作 skill。在制定执行性计划阶段强制触发；工作阶段当上下文压力大、复杂歧义、用户用了高风险信号词、或涉及破坏性/全局/跨仓库操作时强制触发。难判时询问用户，简单任务默认不触发。多轮协商（最多 5 轮）至达成一致，分歧由用户裁决。也可通过 /朋友 或"问问 claude"、"和朋友商量"手动触发。
+description: Peer consultation skill — Codex × Claude bilateral review. Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter. Manual trigger: /朋友, "问问 claude", "和朋友商量", "叫上朋友".
 ---
 
-# 朋友 — Codex × Claude 协作
+# Friend (朋友) — Codex × Claude Peer Consultation
 
-你（Codex）和本地 Claude Code 是搭档。重要任务两人协商，搞不定就找用户，**用户是终审**。
+You (Codex) and your local Claude Code are partners. Consult each other on important tasks; escalate to the user when stuck. **The user is the final arbiter.**
 
-## 触发判定
+## Trigger Conditions
 
-### 强制触发（不询问，直接进入协商）
+### Mandatory (no confirmation needed)
 
-- **执行性计划阶段**：要产出实施方案 / 架构决策 / 批量改动计划时。**纯答疑性的"计划"（解释、调研报告）不触发**
-- **工作阶段** 命中以下任一：
-  - 上下文压力大（已读了很多文件 / 跑了很多工具调用 / 自感会话已很长 / 接近压缩或担心丢上下文）
-  - 任务复杂或有歧义（多种合理实现路径、需求不明、跨多个子系统）
-  - 用户使用"重要"、"关键"、"小心"、"别搞砸"等高风险信号词
-  - 涉及破坏性 / 不可逆操作（删除、迁移、生产部署）
-  - 跨仓库 / 跨工具链 / 权限边界不清 / 修改全局配置
+- **Implementation planning**: producing an action plan, architecture decision, or batch-change plan. *Pure Q&A (explain, research report) does NOT trigger.*
+- **Work phase** — any of the following:
+  - Context pressure (many files read, many tool calls, session feels long, approaching compression)
+  - Complex or ambiguous task (multiple valid paths, unclear requirements, cross-subsystem)
+  - Owner uses urgency/caution words: "critical", "important", "be careful", "don't break this" — or equivalents in any language
+  - Destructive / irreversible operations (delete, migrate, production deploy)
+  - Cross-repo / cross-toolchain / unclear permission boundary / global config change
 
-### 询问用户
+### Ask the user
 
-- **难判任务**：你无法判断是否复杂时，一句"这个要不要叫上 Claude？"
-- **简单任务默认不触发**（单文件改动、明确修复、显然执行）—— 别打断流程
+One sentence: "Should I loop in Claude for this?" — when you genuinely cannot judge complexity.
 
-### 手动触发
+### Skip (don't interrupt)
 
-用户输入 `/朋友`、说"问问 claude"、"和朋友商量"、"叫上朋友" → 立即进入协商
+Single-file change, clear fix, obviously straightforward execution.
 
-## 协商协议
+### Manual trigger
 
-### 标记规范（关键）
+Owner types `/朋友`, says "问问 claude", "和朋友商量", "叫上朋友" → enter consultation immediately.
 
-消息**第一个非空行**必须是 `[FRIEND_CONSULT round=N]`，N 从 1 开始。这是协商身份标记，必须在开头才识别为协商，避免文本中偶然出现该串触发误判。
+### Suggest handoff
 
-### 默认范围：只读咨询
+Boundary: `朋友` is for live decisions and transport; `handoff` is for durable state the next agent can resume from.
 
-协商默认**只是要意见**，不要求对方改文件。如果你希望 Claude 直接改文件，必须在消息中显式写出："请直接修改以下文件：<路径>"。
+When context pressure is high or a role switch / session end is signaled, suggest: "Consider writing a handoff before switching agents — say 交班 or `/handoff`." Do not write automatically. If consultation shaped the work, say to record consensus in `decisions_and_changes` and unresolved points in `open_issues`.
 
-### 首次项目交接
+## Consultation Protocol
 
-当任务涉及本地工程、复杂环境、虚拟环境、容器、WSL、devcontainer、远程开发或多仓库时，`round=1` 必须包含精简的"项目交接"。后续轮次不重复交接卡，只写增量或修订。
+### Marker format (critical)
 
-**注意**：如果是新开的会话（没有 `session_id` 续接、对方零历史），即使逻辑上是后续协商，也按 `round=1` 重新发完整交接卡。判断标准是"对方有没有上下文"，不是"我们第几次聊"。
+**First non-blank line** must be `[FRIEND_CONSULT round=N]`, N starting at 1. Only messages starting with this token are treated as consultation — prevents accidental matches inside file content.
 
-交接原则：
-- 路径写绝对路径；未知或不适用写 `N/A`。
-- 命令写一行可执行字符串，不写"用 pytest"这类描述。
-- 不复制 README、配置文件全文；只列关键文件指针，让对方按需读取。
-- 优先写不依赖激活态的命令（解释器绝对路径 / `uv run` / `docker compose exec`）。activate 链式只作备选，且只保证同一 shell 子进程有效。
-- 不写密钥、token、生产凭证、私有 URL 查询串、个人隐私值、`.env` 原文或日志敏感片段；只写脱敏摘要和文件指针。
+### Default scope: read-only advice
 
-模板：
+Consultation requests opinions only. To ask Claude to modify files directly, write explicitly: "Please directly modify: <path(s)>". Otherwise Claude gives suggestions only.
 
+### Project context (required for round=1 of new sessions)
+
+Include a compact context block when the task involves a local project, virtual env, container, WSL, devcontainer, remote, or monorepo. If Claude has no prior context (new session, no `session_id` to resume), always send the full block — even on logically subsequent rounds.
+
+Principles:
+- Absolute paths only. Unknown or N/A → write `N/A`.
+- Commands are one-line executable strings — not descriptions like "use pytest".
+- No full READMEs or configs — key file pointers only.
+- Prefer activation-independent commands (absolute interpreter path, `uv run`, `docker compose exec`); shell `activate` is a fallback, valid only within the same subprocess.
+- No secrets, tokens, credentials, private URLs, `.env` contents, or sensitive log fragments.
+
+Template:
 ```text
-## 项目交接（首次必填）
-- 项目根目录: <绝对路径>
-- 执行环境: <本机 Windows PowerShell / WSL bash / Docker compose service / devcontainer / remote / N/A>
-- 项目类型: <语言 + 框架>
-- 虚拟环境: <绝对路径 / conda env 名 / 容器服务名 / N/A>
-- 激活命令: <优先不依赖激活态；确需 activate 时写一行命令；不需要则 N/A>
-- 主要工具调用:
-  - test: <一行命令或 N/A>
-  - build: <一行命令或 N/A>
-  - run: <一行命令或 N/A>
-  - lint: <一行命令或 N/A>
-- 关键约定/限制: <2-3 条；没有写 N/A>
-- 相关文件指针: <按需 @ 引用或绝对路径列表；没有写 N/A>
+## Project Context (required for round=1)
+- Project root: <absolute path>
+- Execution environment: <Windows PowerShell / WSL bash / Docker / devcontainer / remote / N/A>
+- Project type: <language + framework>
+- Virtual env: <absolute path / conda env name / container service / N/A>
+- Activation command: <prefer activation-free; if needed, one-line; else N/A>
+- Commands:
+  - test: <one-line or N/A>
+  - build: <one-line or N/A>
+  - run: <one-line or N/A>
+  - lint: <one-line or N/A>
+- Key constraints: <2–3 items; N/A if none>
+- Key file references: <@ references or absolute paths; N/A if none>
 ```
 
-### 第一轮：发起咨询（你 → Claude）
+### Round 1: initiating consultation (Codex → Claude)
 
-优先走 `claude_cli` 直连：先检查 pending 和 failure cache；未处于熔断且 `claude -p` 可用时，用下方命令发起咨询。直连不可用、命中熔断或环境受阻时，降级到文件邮箱 manual transport。不要为直连临时覆盖 `ANTHROPIC_BASE_URL` 或硬编码本地网关；如果用户明确给了可用入口，再按用户提供的入口执行。
+Prefer `claude_cli` direct connection: check pending and failure cache first. If clear and `claude -p` is available, use this command. If not, degrade to file mailbox. Do not temporarily override `ANTHROPIC_BASE_URL` or hardcode a local gateway; use a known working endpoint only if the owner explicitly provides one.
 
 ```bash
 claude -p --output-format json \
@@ -80,146 +86,132 @@ claude -p --output-format json \
   - <<'EOF'
 [FRIEND_CONSULT round=1]
 
-阶段：PLAN  # 或 WORK
-任务：<用户原始请求要点>
-## 项目交接（首次必填；不涉及本地工程可写 N/A）
-<按上方模板填写>
+Phase: PLAN  # or WORK
+Task: <owner's request in brief>
 
-我的草案：
-<计划 / 方案 / 关键决策点 / 已发现的事实>
+## Project Context (required for round=1)
+<fill from the Project Context template above>
 
-待评审：
-1. 是否有遗漏 / 错误 / 更优解
-2. 我没考虑到的风险点
-3. 决议：AGREE / REFINE / OBJECT
+My draft:
+<plan / approach / key decisions / known facts>
+
+Review points:
+1. Any gaps, errors, or better approaches?
+2. Risks I haven't considered?
+3. Decision: AGREE / REFINE / OBJECT
 EOF
 ```
 
-要点：
-- 上方命令用于优先的 `claude_cli` 路径；manual 路径用同一份 prompt 写入 mailbox。
-- 不需要 Claude 读本地文件时，可省略 `--add-dir` 和 `--allowedTools`，把必要摘要放进 prompt。
-- 需要读本地文件时，用一个或多个 `--add-dir <目录>` 明确授权；默认仍是只读咨询，不让 Claude 改文件。
-- 读取 JSON 里的 `result` 作为回复；保留 `session_id`，后续轮次目标形式为 `claude -p --resume <session_id> --output-format json --add-dir <dir>`，具体可用形式以 `claude --help` 实测为准。取不到 `session_id` 时新开会话粘贴上一轮摘要，或退回 mailbox。**注意**：mailbox bridge 的 archive/state 不承载多轮语义，只用于去重、排错和审计。
-- 命令非 0 退出、连接/API 响应异常、权限不足或超时：补齐参数后最多重试 1 次。认证错误不要反复重试，改用人工降级或升级给用户。
+Notes:
+- Omit `--add-dir` and `--allowedTools` when Claude does not need local file access.
+- Use one or more `--add-dir <dir>` to grant read access; default is read-only advice, not file writes.
+- Parse `result` from the JSON response; retain `session_id` for multi-round continuation: `claude -p --resume <session_id> --output-format json --add-dir <dir>` (verify exact form with `claude --help`).
+- If `session_id` is unavailable, start a new session with the previous round's key points, or fall back to mailbox.
+- On non-zero exit, connection error, or timeout: retry once with corrected params. Do not loop-retry auth errors — degrade to manual or escalate to user.
 
-### 人工降级：文件邮箱
+### Manual fallback: file mailbox
 
-直连不可用时，使用本地文件邮箱。`claude_cli` transport 的 bridge 可自动 dispatch；manual transport 只做协议守卫、归档和 pending 提示，仍需用户/agent 自己读写 mailbox。（启动桥时解释器按平台选择：Windows 用 `python` 或 `py`，Linux/macOS 用 `python3`）
+When `claude_cli` is unavailable:
 
-| 步骤 | 你（Codex） | 用户 | Claude |
+| Step | You (Codex) | User | Claude |
 |---|---|---|---|
-| 1 | 把消息（含 `[FRIEND_CONSULT round=N]` + 完整内容）写入 `~/.shared/friend/codex_to_claude.md`，覆盖 | 把这个路径告诉 Claude | 读文件，按防递归规则回复，写入 `~/.shared/friend/claude_to_codex.md`，覆盖 |
-| 2 | 收到用户转告后读 `~/.shared/friend/claude_to_codex.md` | 把 Claude 的路径告诉你 | — |
+| 1 | Write message (with `[FRIEND_CONSULT round=N]` + full content) to `~/.shared/friend/codex_to_claude.md` | Tell Claude the path | Claude reads, replies per anti-recursion rules, writes to `~/.shared/friend/claude_to_codex.md` |
+| 2 | Read `~/.shared/friend/claude_to_codex.md` after user relays | Tell you the path | — |
 
-写完后若没有可用的 `claude_cli` 自动 dispatch，启动 `friend_mailbox_bridge.py --wait-reply` 等待 `claude_to_codex.md` 新回复；超时再告诉用户："请转告 Claude 读 `~/.shared/friend/codex_to_claude.md`"。多轮就在这两份文件来回覆盖。
+After writing, if no auto-dispatch is available, start `friend_mailbox_bridge.py --wait-reply` to poll for `claude_to_codex.md`; if it times out, tell the user: "Please ask Claude to read `~/.shared/friend/codex_to_claude.md`."
 
-每轮覆盖前可先 `cp` 备份到 `~/.shared/friend/archive/<round>_<from>.md`（可选）。
+**Single-instance constraint**: one bridge `--watch` process per mailbox max; clean stale lock before starting (`.bridge_watch.lock` heartbeat, stale threshold: max(3×poll, 30s)). Start bridge with: `python3 ~/.shared/friend/friend_mailbox_bridge.py --watch --mailbox ~/.shared/friend` (pass `--mailbox` explicitly; required in WSL to avoid path confusion).
 
-**桥单实例约束**：同机同 mailbox 只允许一个 bridge `--watch` 实例；启动前检查并清理 stale pid/lock（`.bridge_watch.lock` 含 heartbeat，max(3*poll, 30s) 过期视 stale）。
+**Transport layers**: bridge defaults to `--transport manual` (stdlib only, no external deps) — protocol guard + archive + `pending_for_*` state + `.bridge.pending` sentinel; **no `claude -p`**. Use `--transport claude_cli` for auto-dispatch; failures use `failure_cache` circuit-break (TTL 5–15 min by error class, env `FRIEND_BRIDGE_FAILURE_TTL_SECONDS`; backoff cap 1h).
 
-**Transport 分层**：协作发起优先 `claude_cli`；bridge 进程缺省 `--transport manual` 只是安全兜底（任何系统、零外部依赖、stdlib only）—— 只做协议守卫 + archive + state.pending_for_* + sentinel `.bridge.pending`，**不调** `claude -p`；用户/agent 自己读 mailbox。显式 `--transport claude_cli` 才启自动 dispatch（要求 claude -p 可用），失败走 `failure_cache` 熔断（base TTL 按 classification 分级 5–15min，env `FRIEND_BRIDGE_FAILURE_TTL_SECONDS` 覆盖；指数退避 cap 1h）。`--wait-reply` 只自动拉回 Claude 已写入的 mailbox 回复，不生成回复；`--probe` 在 manual 下只输出状态；`--probe --transport claude_cli` 才真测 claude。
+**Pending check (mandatory)**: before starting any consultation or when the user prompts, check `.bridge.pending` or `pending_for_codex` in `.bridge_state.json`; if true, read `claude_to_codex.md` and process first.
 
-**mailbox pending 检查（强制）**：每次启动朋友协作或收到用户协商提示时，先看 `~/.shared/friend/.bridge.pending`（存在即有未读消息）或 `.bridge_state.json` 的 `pending_for_codex`；为 true 时先读 `claude_to_codex.md` 处理，再写 `codex_to_claude.md`（bridge 检测会自动清 `pending_for_codex` 并置 `pending_for_claude=true`）。
+**Queue (preferred for manual new requests)**: use `~/.shared/friend/friend_queue.py send` to generate a request ID, then `wait <request-id>` to poll for Claude's reply. Old mailbox files remain for compatibility. See `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`.
 
-**Queue 优先用于 manual 新请求**：manual 模式下新任务优先用 `~/.shared/friend/friend_queue.py send` 生成 request id，再用 `wait <request-id>` 等同 id 回复；旧 `codex_to_claude.md`/`claude_to_codex.md` 只作兼容。队列说明见 `~/.shared/friend/FRIEND_QUEUE_HANDOFF.md`。
+**End-to-end manual prerequisite**: a `friend_mailbox_bridge.py --watch --transport manual` process must be running (either side); it converts inbox/outbox file changes into `pending_for_*` state and the sentinel file.
 
-**前提（manual 端到端）**：要求一个 `friend_mailbox_bridge.py --watch --transport manual` 进程在跑（任意一侧启动均可），它负责把 inbox/outbox 文件变化转写成 `pending_for_*` 状态和 sentinel；`--wait-reply` 只轮询 outbox 拉回新回复，不负责生成 pending。
+### Multi-round
 
-### 多轮规则（适用于直连 CLI 和文件邮箱）
-
-- 收到 **REFINE** → 整合后续接
-- 收到 **OBJECT** → 同上，附理由
-- **最多 5 轮**。5 轮仍分歧 → 升级给用户
-
-### 升级给用户
+- **REFINE** → incorporate and continue
+- **OBJECT** → same, include your rationale
+- **Max 5 rounds.** Still diverging → escalate to user:
 
 ```
-朋友协商 5 轮未达一致：
-
-我的方案：<要点>
-Claude 的方案：<要点>
-核心分歧：<差异点>
-
-请你裁决。
+Peer consultation: 5 rounds without consensus.
+My plan: <key points>
+Claude's plan: <key points>
+Core disagreement: <what differs>
+Please decide.
 ```
 
-### 达成一致（AGREE）
+### Reaching consensus (AGREE)
 
-- 主回复开头简注："已与 Claude 协商一致："
-- 按方案执行
+Prefix reply with: "Agreed with Claude:" then proceed.
 
-## 防递归（关键）
+## Anti-recursion (critical)
 
-当**你**收到带 `[FRIEND_CONSULT]` 标记（在第一个非空行）的输入：
+When you receive input where **the first non-blank line** is `[FRIEND_CONSULT round=N]`:
+- Reply AGREE / REFINE / OBJECT
+- **Allowed**: resume `claude -p` (verify exact form with `claude --help`) to deliver this verdict back to the originating session
+- **Prohibited**: starting a reverse `[FRIEND_CONSULT]`; expanding scope in a resume prompt; asking the counterpart to invoke third-party tools
+- Nesting boundary = "does this create a new reverse consultation chain?" (not "does this call the counterpart's CLI?")
+- You may read files / run read-only commands to verify facts
 
-- 回复 AGREE / REFINE / OBJECT
-- **允许**按 `claude --help` 实测的 resume 形式（目标形式 `claude -p --resume <session_id> --output-format json ...`）把本轮裁决递送回原发起会话（同协商下一轮）
-- **禁止**新起反向 `[FRIEND_CONSULT]`、不在 resume prompt 里扩大任务范围 / 发起新评审任务 / 要求对方调第三方工具
-- 套娃边界 = "是否新建反向咨询链路"，不是"是否调对方 CLI"
-- 可以读文件 / 跑只读命令以核实事实
+## Trust Level and Permissions
 
-只有标记**位于消息开头**才识别为协商。
+### FRIEND_TRUST_LEVEL (symmetric both directions)
 
-## Trust Level 与权限控制
-
-### FRIEND_TRUST_LEVEL（权限范围，双向对称）
-
-| 档位 | Codex→Claude（claude -p 直调或 via bridge） | Claude→Codex（codex exec） |
+| Level | Codex → Claude (`claude -p` direct or via bridge) | Claude → Codex (`codex exec`) |
 |---|---|---|
 | **safe** | `--allowedTools Read,Grep,Glob,LS` | `--sandbox read-only` |
-| **workspace**（默认）| `--permission-mode acceptEdits --allowedTools Read,Grep,Glob,LS,Edit,MultiEdit,Write` | `--sandbox workspace-write` |
+| **workspace** (default) | `--permission-mode acceptEdits --allowedTools Read,Grep,Glob,LS,Edit,MultiEdit,Write` | `--sandbox workspace-write` |
 | **danger** | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` |
 
-`danger` 需同时满足 `FRIEND_TRUST_LEVEL=danger` **且** `FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND`，否则 bridge 静默降级到 `workspace` 并写 stderr/log/state。
+`danger` requires both `FRIEND_TRUST_LEVEL=danger` **and** `FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND`; otherwise bridge silently downgrades to `workspace`.
 
-直接调 `claude -p` 时，根据 `FRIEND_TRUST_LEVEL` 追加对应 flag（见上表左列）；bridge 在 `--transport claude_cli` 时自动应用。
+Apply the corresponding flag when calling `claude -p` directly; bridge applies it automatically in `--transport claude_cli` mode.
 
-### FRIEND_DISPATCH_MODE（automation 激进度，仅影响 bridge claude -p 方向）
+### FRIEND_DISPATCH_MODE (bridge `claude -p` direction only)
 
-| 档位 | 行为 |
+| Mode | Behavior |
 |---|---|
-| **manual** | 禁止 `claude -p` 自动 dispatch；bridge 只做协议守卫 + archive |
-| **auto**（默认） | 现有 failure_cache + TTL 行为 |
-| **eager** | 非 auth 失败 TTL × 0.5（下限 30s）；auth 类不缩短；`--force` 仍是唯一绕过 |
+| **manual** | No auto `claude -p` dispatch; protocol guard + archive only |
+| **auto** (default) | Existing `failure_cache` + TTL behavior |
+| **eager** | Non-auth failures: TTL × 0.5 (floor 30s); auth unchanged; `--force` is the only bypass |
 
-优先级：CLI arg（`--trust-level` / `--dispatch-mode`）> 对应 env var > 默认值。
+Priority: CLI arg > env var > default. Legacy numeric values (`0/1/2`) map to `manual/auto/eager` with a deprecation warning; permission level always defaults to `workspace`.
 
-### 迁移：旧 FRIEND_TRUST_LEVEL=0/1/2
+Config via env var or CLI arg only; see `~/.shared/friend/trust-profile.env.example`.
 
-旧数字值已废弃；bridge 自动映射到 `FRIEND_DISPATCH_MODE`（`0→manual`、`1→auto`、`2→eager`）并输出 deprecation warning。权限档始终默认 `workspace`，不受旧值影响。
+## Protocol Vocabulary
 
-### 配置文件
+- **AGREE**: accept current plan, proceed to execution
+- **REFINE**: direction is right, needs specific changes
+- **OBJECT**: plan is fundamentally wrong — provide alternative
 
-权限配置只通过 env var 或 CLI arg 设置；参考 `~/.shared/friend/trust-profile.env.example`，不自动 source，不改全局 settings。
+Do not invent new terms. When information is missing: `REFINE: need to confirm X/Y/Z with the user first`.
 
-## 协议词义
+When citing paths, function names, commands, or tool results, include the source (which file, which command). If unverified, say so.
 
-- **AGREE**：同意当前方案，可以执行
-- **REFINE**：方向对，需要具体修改
-- **OBJECT**：方案根本不对，提出替代
+## Do Not Trigger
 
-不要造新词。信息不足时用 `REFINE: 需要先向用户确认 X/Y/Z` 表达。
+- Pure Q&A (explain code, look up docs) → answer independently
+- Owner says "don't loop in Claude" or "let me check this myself"
+- Receiving a reverse `[FRIEND_CONSULT]` → see anti-recursion
+- Already processing a Claude reply within an active consultation
 
-涉及具体路径、函数名、命令、行号或工具结果时，附来源（读了哪个文件 / 跑了什么命令）；未核实就说未核实。
+## Sync Notification
 
-## 不要触发的场景
+For unilateral notification of changes affecting the counterpart's future behavior (skill, hook, global rules, memory). Not multi-round.
 
-- 单纯问答（解释代码、查文档）→ 独立回答
-- 用户明确说"先别叫 claude"、"我自己看看"
-- 收到 `[FRIEND_CONSULT]` 反向咨询时
-- 协商过程中处理 Claude 回复时不要套娃
+- First non-blank line: `[NOTIFY]`. Body must include: source, category, changed file paths, diff summary, impact, expected action, sanitized summary. **Any long-term rule change must send `[NOTIFY]`.**
+- Before writing a `[NOTIFY]` to Claude's inbox, check `pending_for_claude` in `.bridge_state.json`; if true, wait for it to be processed or use the queue.
+- Notify only for changes affecting judgment or capability. Not for project code, logs, cache, secrets, or tokens.
+- On receiving `[NOTIFY]`: reply `ACK: received — <key points>`; evaluate and adapt locally if applicable (Codex side: usually AGENTS.md / skill). Do not blindly mirror.
+- If notification reveals a real disagreement, open a `[FRIEND_CONSULT]`.
 
-## 互通同步机制
+### Optional: cross-clone canonical pointer
 
-用于单向告知会影响对方后续行为的 skill / hook / 全局规则 / memory 变更，不走协商多轮。
+If `~/.shared/friend/CURRENT.md` exists, read its `canonical` path before consulting. Verify repo/branch/head/dirty state with live commands — do not treat CURRENT as a fact source.
 
-- 通知第一非空行必须是 `[NOTIFY]`，正文必须写来源、类别、改动文件路径、diff 摘要、影响面、期望动作、脱敏摘要。**任何长期规则变更必须发 `[NOTIFY]`；否则两侧会快速分叉。**
-- 只通知会影响判断或可用能力的长期变更；普通项目代码、临时发现、日志、缓存、密钥、token、私密凭证不通知；可复用经验写入编辑维护式经验本，不写流水账。
-- 收到 `[NOTIFY]` 时先回复 `ACK: 已签收，已了解 <要点>`；若等价变更在本侧同样适用，由本侧主导评估并按自身环境适配更新（Codex 侧通常是 AGENTS.md / skill）；不要盲目镜像。
-- 通知暴露真实分歧、风险或歧义时，另起 `[FRIEND_CONSULT]` 协商。
-
-### 可选：跨 clone canonical 指针
-
-若存在 `~/.shared/friend/CURRENT.md`，协商前先读取其中的 `canonical` 路径；进入该路径后，repo / branch / head / dirty / 测试结果必须用实时命令核验，不能把 CURRENT 当事实源。
-
-CURRENT 只允许包含 `updated`、`canonical`、`owner`、`expires`。需要写入时，先读现值：若 `owner != codex` 且当前时间早于 `expires`，不要覆盖，改用 `[NOTIFY] request-handoff`；若 `owner == codex` 或已过期，可用临时文件 + rename 原子覆盖。默认 `expires = updated + 30min`；长协商、离开前或继续持有 canonical 时主动续期（同时重写 `updated` 和 `expires`）。
+CURRENT may only contain `updated`, `canonical`, `owner`, `expires`. Before writing: if `owner != codex` and not yet expired, do not overwrite — send `[NOTIFY] request-handoff` instead. If `owner == codex` or expired: atomic temp-file + rename. Default `expires = updated + 30min`; renew both `updated` and `expires` in long sessions.

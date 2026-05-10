@@ -4,6 +4,21 @@
 
 `朋友` 不是把两个 agent 绑成一个更吵的声音。它是一套本地协作协议，让 Claude Code 和 Codex 保留各自的判断、工具链和工作习惯，在真正值得停下来确认的时刻互相问一句：这个方案稳吗？
 
+## What's new
+
+### v2.1 — 2026-05-10
+
+- **handoff (交班) skill 加入发行版**：两侧都新增了 `handoff` skill。`朋友` 负责实时协商和消息传递；`handoff` 负责把当前工程状态打包成下一个 agent（或同一个 agent 重置上下文后）能直接接手的持久文档。两个 skill 互相感知，协商中产生的决策建议写进 `decisions_and_changes`，未解决分歧写进 `open_issues`。
+  - Codex 侧附带 `new_handoff.py`（骨架生成器）和 `handoff-template.md`（规范模板）。
+  - 触发词：`交班`、`handoff`、`接力`、`轮流继续同一工程`，或直接说 `/handoff`。
+- **朋友 skill 改为英文**：SKILL.md 全面改写为英文，结构更紧凑；POWERSHELL_TIPS.md 同步更新为英文。协商协议本身（标记格式、决议词、触发判定逻辑）保持不变。
+
+### v2.0
+
+- Transport 分两层：`--transport manual`（默认，stdlib only，无 `claude -p`）和 `--transport claude_cli`（可选，带 failure cache 熔断）。
+- Pending check 绑定 inbox SHA256，不再被无关 outbox 写入错误清零。
+- Queue 接口（`friend_queue.py`）作为 manual 模式下的首选发起方式。
+
 ## 它解决什么
 
 单个 agent 最容易出问题的地方，通常不是"不会写代码"，而是：
@@ -13,8 +28,9 @@
 - 删除、迁移、发布、全局配置这类操作影响很大，却缺少第二视角。
 - 跨仓库、跨 CLI、跨系统环境时，某一端对另一端的真实约束不了解。
 - 说到了路径、命令、函数、行号，却没有说明依据来自哪里。
+- 会话切换或上下文重置时，工程状态散落在记忆里，接手方不知从哪读起。
 
-`朋友` 的处理方式很朴素：关键时刻，让另一个 agent 做一次独立评审。它不追求每件小事都双人审批，只在值得打断的地方介入。
+`朋友` 的处理方式很朴素：关键时刻，让另一个 agent 做一次独立评审。`handoff` 的处理方式同样朴素：切换前，把工程状态写成一份接手方 5 分钟内能读完的文档。
 
 ## 核心能力
 
@@ -24,13 +40,11 @@
 - **三态决议**：只允许 `AGREE`、`REFINE`、`OBJECT`，避免讨论失控。
 - **最多 5 轮**：协商不能无限拉扯，分歧解决不了就升级给用户。
 - **防递归**：收到朋友咨询的一方按裁决回推（同 thread 续接），但不新建反向咨询链路。
-- **跨平台 manual 通道**：bridge 默认 `--transport manual`，**任何系统**（Linux / macOS / Windows / WSL）零外部依赖跑通；只做协议守卫 + 归档 + pending 状态 + sentinel；不调用 `claude -p`。
+- **handoff 持久化**：`/handoff`（`交班`）把工程当前状态写成结构化 Markdown，供下一个 agent 或同一 agent 重启后直接接手；与 `朋友` 协议互通。
+- **跨平台 manual 通道**：bridge 默认 `--transport manual`，**任何系统**（Linux / macOS / Windows / WSL）零外部依赖跑通。
 - **可选 claude_cli 加速**：显式 `--transport claude_cli` 启用自动 dispatch，配合 failure cache 熔断。
 - **来源约束**：提到具体路径、命令、函数、行号时，要说明读了哪个文件或跑了什么命令。
 - **stdlib only**：`bridge` 和 helper 都只用 Python 标准库；不引入第三方包，不修改用户 shell / PATH / proxy / settings。
-
-
-~~已知BUG：CLI失效的时候本地信箱互相自动拉取非常困难~~（已修复：`pending_for_claude` 现在通过 `pending_inbox_sha256` 与 inbox 消息绑定，不再被无关 outbox 写入错误清零）
 
 ## 30 秒安装
 
@@ -54,9 +68,11 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 1. 安装 Claude 端 `朋友` skill 到 `~/.claude/skills/朋友/`（含 `SKILL.md`、`POWERSHELL_TIPS.md`、`scripts/friend_mailbox_claude.py`）
 2. 安装 Codex 端 `朋友` skill 到 `~/.codex/skills/朋友/SKILL.md`
-3. 创建 `~/.shared/friend/` 本地邮箱目录
-4. 安装邮箱桥脚本到 `~/.shared/friend/friend_mailbox_bridge.py`
-5. 通过 managed block 幂等更新 `~/.codex/AGENTS.md`（重复运行不会重复追加）
+3. 安装 Claude 端 `handoff` skill 到 `~/.claude/skills/handoff/SKILL.md`
+4. 安装 Codex 端 `handoff` skill 到 `~/.codex/skills/handoff/`（含 `SKILL.md`、`agents/openai.yaml`、`assets/handoff-template.md`、`scripts/new_handoff.py`）
+5. 创建 `~/.shared/friend/` 本地邮箱目录
+6. 安装邮箱桥脚本到 `~/.shared/friend/friend_mailbox_bridge.py`
+7. 通过 managed block 幂等更新 `~/.codex/AGENTS.md`（重复运行不会重复追加）
 
 已存在的同名文件先备份为 `<path>.bak.<timestamp>`。
 
@@ -74,7 +90,7 @@ bridge 不调 `claude -p`，只做：
 
 manual 端到端工作流：
 
-**前提**：本机要有一个 `friend_mailbox_bridge.py --watch --transport manual` 进程在跑（任意一侧启动均可），它负责把 inbox/outbox 文件变化转写成 `pending_for_*` 状态和 sentinel。否则 helper 的 `watch` 命令永远看不到 pending（因为没人更新这些字段）。
+**前提**：本机要有一个 `friend_mailbox_bridge.py --watch --transport manual` 进程在跑，它负责把 inbox/outbox 文件变化转写成 `pending_for_*` 状态和 sentinel。
 
 启动 watcher（任一侧）：
 ```bash
@@ -83,13 +99,13 @@ python3 ~/.shared/friend/friend_mailbox_bridge.py --watch --mailbox ~/.shared/fr
 
 会话内一次往返：
 1. Codex 写 `~/.shared/friend/codex_to_claude.md` → manual watcher 检测 → 设 `pending_for_claude=true`
-2. Codex 启动 `bridge --wait-reply --mailbox <path>` 阻塞等回复（短 lock 写 state）
+2. Codex 启动 `bridge --wait-reply --mailbox <path>` 阻塞等回复
 3. ClaudeCode 用 `friend_mailbox_claude.py watch --print-inbox` 检测 pending → 推理 → `helper write --reply-file <reply>`
-4. manual watcher 检测 outbox 新 hash + `bridge --wait-reply` 检测 outbox 新 hash → 后者立即返回 + 输出回复给 Codex（清 `pending_for_codex`）
+4. manual watcher 检测 outbox 新 hash → 返回回复给 Codex（清 `pending_for_codex`）
 
 ### `--transport claude_cli`（可选；要求 `claude -p` 可用）
 
-启用自动 dispatch：bridge 直接调 `claude -p`。失败时按 classification（timeout / proxy / auth / malformed / unknown）写 `failure_cache`，TTL 内跳过重试，指数退避 cap 1h；`FRIEND_BRIDGE_FAILURE_TTL_SECONDS` 可覆盖 base TTL。
+启用自动 dispatch：bridge 直接调 `claude -p`。失败时按 classification（timeout / proxy / auth / malformed / unknown）写 `failure_cache`，TTL 内跳过重试，指数退避 cap 1h。
 
 诊断当前机器的 `claude -p` 是否可用：
 
@@ -125,8 +141,6 @@ OBJECT: 方案不对，给出替代方案
 
 任何长期规则变更（skill / hook / 全局配置 / memory）必须用 `[NOTIFY]` 通知对方，正文必含：来源、类别、改动文件路径、diff 摘要、影响面、期望动作、脱敏摘要。
 
-代改对方入口文件需先 NOTIFY/授权；链路故障时代改后立刻通告 diff。
-
 ## 文件结构
 
 ```text
@@ -137,21 +151,31 @@ friend-skill/
 ├── install.ps1
 ├── claude/
 │   └── skills/
-│       └── 朋友/                      → 安装到 ~/.claude/skills/朋友/
-│           ├── SKILL.md
-│           ├── POWERSHELL_TIPS.md
-│           └── scripts/
-│               ├── friend_mailbox_claude.py   # ClaudeCode 侧 helper
-│               ├── surface_friend_pending.sh
-│               └── start_friend_session.sh
+│       ├── 朋友/                          → 安装到 ~/.claude/skills/朋友/
+│       │   ├── SKILL.md
+│       │   ├── POWERSHELL_TIPS.md
+│       │   └── scripts/
+│       │       ├── friend_mailbox_claude.py
+│       │       ├── surface_friend_pending.sh
+│       │       └── start_friend_session.sh
+│       └── handoff/                       → 安装到 ~/.claude/skills/handoff/
+│           └── SKILL.md
 ├── codex/
 │   ├── skills/
-│   │   └── 朋友/                      → 安装到 ~/.codex/skills/朋友/
-│   │       └── SKILL.md
-│   └── AGENTS.md.snippet              # managed-block 模板
+│   │   ├── 朋友/                          → 安装到 ~/.codex/skills/朋友/
+│   │   │   └── SKILL.md
+│   │   └── handoff/                       → 安装到 ~/.codex/skills/handoff/
+│   │       ├── SKILL.md
+│   │       ├── agents/
+│   │       │   └── openai.yaml
+│   │       ├── assets/
+│   │       │   └── handoff-template.md
+│   │       └── scripts/
+│   │           └── new_handoff.py
+│   └── AGENTS.md.snippet
 └── shared/
-    └── friend/                        → 安装到 ~/.shared/friend/
-        ├── friend_mailbox_bridge.py   # 共享桥：--watch / --once / --probe / --wait-reply
+    └── friend/                            → 安装到 ~/.shared/friend/
+        ├── friend_mailbox_bridge.py
         ├── friend_queue.py
         └── trust-profile.env.example
 ```
@@ -199,9 +223,9 @@ MIT, 见 [LICENSE](LICENSE).
 
 **friend** is a bidirectional collaboration skill for Claude Code and Codex. Same protocol, two transports:
 
-- **Manual transport (default)**: stdlib-only file mailbox under `~/.shared/friend/`. The bridge guards protocol markers, archives messages, tracks `pending_for_*` flags, and writes a sentinel — but does **not** invoke `claude -p`. Works on any system. End-to-end automation in manual mode requires:
-  - Codex side: `friend_mailbox_bridge.py --wait-reply` to pull back Claude's reply
-  - Claude side: `friend_mailbox_claude.py watch --print-inbox` + `helper write --reply-file <reply>`
+- **Manual transport (default)**: stdlib-only file mailbox under `~/.shared/friend/`. The bridge guards protocol markers, archives messages, tracks `pending_for_*` flags, and writes a sentinel — but does **not** invoke `claude -p`. Works on any system.
 - **`claude_cli` transport (opt-in)**: invokes `claude -p` for auto-dispatch with classified failure cache (timeout / proxy / auth / malformed / unknown), exponential backoff capped at 1h.
+
+**handoff** is the persistence layer alongside friend: `朋友` handles live consultation and transport; `handoff` writes the compact project state the continuing agent needs after a break, context reset, or role switch. Say `交班` or `/handoff` to trigger it.
 
 Three verdicts (`AGREE`, `REFINE`, `OBJECT`), up to 5 rounds, then human escalation. Anti-recursion: replies may use thread/session resume, but a new `[FRIEND_CONSULT]` reverse chain is forbidden. Long-term rule changes must use `[NOTIFY]` with a strict required-fields template. Stdlib-only Python; no third-party packages, no global env / proxy / shell mutations.
