@@ -93,16 +93,107 @@ def script_derived_mailbox() -> Path | None:
     return None
 
 
+def _wsl_windows_profile_mailbox() -> Path | None:
+    """Pure path-inspection WSL safety net; never shells out."""
+    proc_version = Path("/proc/version")
+    try:
+        if not proc_version.exists():
+            return None
+        proc_text = proc_version.read_text(errors="replace").lower()
+        if "microsoft" not in proc_text and "wsl" not in proc_text:
+            return None
+    except OSError:
+        return None
+
+    # Level 1: this helper is already under /mnt/<drive>/Users/<user>/...
+    parts = Path(__file__).resolve().parts
+    if len(parts) >= 5 and parts[0] == "/" and parts[1] == "mnt" and parts[3] == "Users":
+        candidate = Path("/", "mnt", parts[2], "Users", parts[4], ".shared", "friend")
+        if candidate.parent.parent.exists():
+            return candidate
+
+    # Level 2: Linux and Windows usernames match.
+    username = Path.home().name
+    candidate = Path(f"/mnt/c/Users/{username}/.shared/friend")
+    if candidate.parent.parent.exists():
+        return candidate
+
+    # Level 3: exactly one active Windows profile is visible.
+    def is_active_profile(profile: Path) -> bool:
+        return (
+            (profile / ".claude").exists()
+            or (profile / ".codex").exists()
+            or (profile / ".shared" / "friend").exists()
+        )
+
+    matches: list[Path] = []
+    for drive in "cdefghijklmnopqrstuvwxyz":
+        users_dir = Path(f"/mnt/{drive}/Users")
+        if not users_dir.is_dir():
+            continue
+        try:
+            for profile in users_dir.iterdir():
+                if profile.is_dir() and is_active_profile(profile):
+                    matches.append(profile / ".shared" / "friend")
+        except PermissionError:
+            continue
+        if len(matches) > 1:
+            return None
+
+    return matches[0] if len(matches) == 1 else None
+
+
+def _try_import_discovery():
+    """Try to import shared mailbox discovery from installed runtime dirs."""
+    candidates = []
+    derived = script_derived_mailbox()
+    if derived is not None:
+        candidates.append(derived)
+    win_profile = _wsl_windows_profile_mailbox()
+    if win_profile is not None:
+        candidates.append(win_profile)
+    candidates.append(Path("~/.shared/friend").expanduser())
+
+    for candidate in candidates:
+        try:
+            discovery_dir = str(candidate.resolve())
+        except OSError:
+            discovery_dir = str(candidate)
+        if discovery_dir not in sys.path:
+            sys.path.insert(0, discovery_dir)
+            inserted = True
+        else:
+            inserted = False
+        try:
+            from friend_discovery import discover_mailbox
+
+            return discover_mailbox
+        except ImportError:
+            if inserted:
+                try:
+                    sys.path.remove(discovery_dir)
+                except ValueError:
+                    pass
+    return None
+
+
 def resolve_mailbox(mailbox: Path | None) -> Path:
     if mailbox is not None:
         return mailbox.expanduser().resolve()
     env_mailbox = os.environ.get("FRIEND_MAILBOX")
-    candidates: list[Path] = []
     if env_mailbox:
-        candidates.append(Path(env_mailbox))
+        return Path(env_mailbox).expanduser().resolve()
+    discover_mailbox = _try_import_discovery()
+    if discover_mailbox is not None:
+        return discover_mailbox(__file__)
+
+    candidates: list[Path] = []
     derived = script_derived_mailbox()
     if derived is not None:
         candidates.append(derived)
+    win_profile = _wsl_windows_profile_mailbox()
+    if win_profile is not None:
+        candidates.append(win_profile)
     candidates.append(Path("~/.shared/friend").expanduser())
 
     best = max(candidates, key=mailbox_score)

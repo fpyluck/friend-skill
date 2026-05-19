@@ -1,30 +1,51 @@
-# 朋友 (friend)：Claude Code × Codex 双端协作 Skill
+# 四合技能套件：朋友 × 兄弟们 × 帮手 × 交班
+# Four-Skill Suite: Friend × Xiongdimen × Helper × Handoff
 
-> 让 Claude Code 和 Codex 在重要任务上互相校准：一个提出方案，另一个审稿、挑错、补盲区。能达成一致就执行，达不成一致就交给用户裁决。
+> Claude Code、Codex、Gemini 三端协作 — 协商、对齐、分工、交接，一套走到底。
 
-`朋友` 不是把两个 agent 绑成一个更吵的声音。它是一套本地协作协议，让 Claude Code 和 Codex 保留各自的判断、工具链和工作习惯，在真正值得停下来确认的时刻互相问一句：这个方案稳吗？
+---
 
-## What's new
+## 一句话定位
 
-### v2.2 — 2026-05-10
+| 技能 | 触发词 | 作用 |
+|---|---|---|
+| `朋友` | `朋友` / `/friend` | Claude ↔ Codex 双端实时协商，关键时刻第二视角 |
+| `兄弟们` | `兄弟们` / `/xiongdimen` | Claude × Codex × Gemini 三方对齐，Gemini 补产品/UX/多模态视角 |
+| `帮手` | `帮手` / `/helper` | 协商结束后的文件不重叠分工执行 |
+| `交班` | `交班` / `/handoff` | 写出下一个 agent 5 分钟内能接手的持久化工程状态 |
 
-- **Slug 重命名**：`朋友/` 目录全部改为 `friend/`（`claude/skills/friend`、`codex/skills/friend`）；不再发布旧的 `朋友` 目录。
-- **helper skill 加入发行版**：新增 `helper` skill（Claude + Codex 双端），负责协商后的分工执行（work card 格式，外部 CLI helper 参考资料）。
-- **共享运行时扩展**：新增 `friend_gate.py`（权限把关与格式验证），新增 gate 测试套件（12 个测试）；安装器一并同步 `friend_gate.py`、`tests/`、`trust-profile.env.example`。
-- **Debug 修复**：`start_friend_session.sh`、`new_handoff.py` 不再硬编码路径；`AGENTS.md.snippet` 路径修正为 `~/.codex/skills/friend/SKILL.md`；所有脚本 LF 标准化。
+四个技能是一条链：**朋友/兄弟们** 做决策，**帮手** 做执行，**交班** 做记录。
 
-### v2.1 — 2026-05-10
+---
 
-- **handoff (交班) skill 加入发行版**：两侧都新增了 `handoff` skill。`朋友` 负责实时协商和消息传递；`handoff` 负责把当前工程状态打包成下一个 agent（或同一个 agent 重置上下文后）能直接接手的持久文档。两个 skill 互相感知，协商中产生的决策建议写进 `decisions_and_changes`，未解决分歧写进 `open_issues`。
-  - Codex 侧附带 `new_handoff.py`（骨架生成器）和 `handoff-template.md`（规范模板）。
-  - 触发词：`交班`、`handoff`、`接力`、`轮流继续同一工程`，或直接说 `/handoff`。
-- **朋友 skill 改为英文**：SKILL.md 全面改写为英文，结构更紧凑；POWERSHELL_TIPS.md 同步更新为英文。协商协议本身（标记格式、决议词、触发判定逻辑）保持不变。
+## What's New in v3.0 — 2026-05-19
 
-### v2.0
+这是一次全新重写，核心变化是加入 **Gemini** 作为第三端，以及 **兄弟们 (xiongdimen)** 技能的正式发布。
 
-- Transport 分两层：`--transport manual`（默认，stdlib only，无 `claude -p`）和 `--transport claude_cli`（可选，带 failure cache 熔断）。
-- Pending check 绑定 inbox SHA256，不再被无关 outbox 写入错误清零。
-- Queue 接口（`friend_queue.py`）作为 manual 模式下的首选发起方式。
+### 三端技能体系
+
+- **Gemini 加入**：`兄弟们` 技能现在覆盖三个 CLI（Claude Code + Codex + Gemini），提供完整的三方对齐能力。
+- **`xiongdimen` 独立发布**：Claude 侧、Codex 侧、Gemini 侧各有对应的 SKILL.md，角色清晰分工：
+  - Claude：歧义检查、备选方案、用户侧叙事、风险梳理
+  - Codex：实现契约、后端/API 形态、仓库侧风险、验证边界
+  - Gemini：广度、前端/UX、多模态/产品评审（叶子审阅者，返回结论后停止）
+- **`gemini_leaf.py` 统一分发**：Claude 和 Codex 两端都打包了同一个 Gemini 运行器脚本。
+
+### 四技能完整套件
+
+- `朋友` (friend)：双端协商，最多 5 轮，三态裁决（AGREE / REFINE / OBJECT）
+- `兄弟们` (xiongdimen)：**新** 三方对齐，`朋友` transport + Gemini 叶子查询
+- `帮手` (helper)：**经 `[SPLIT: YES]` 授权后**的文件不重叠分工执行
+- `交班` (handoff)：工程持久化，9 节标准模板，支持 agent 切换和上下文重置恢复
+
+### 其他改进
+
+- `friend_discovery.py` 加入共享运行时，mailbox 路径自动发现更可靠
+- `POWERSHELL_TIPS.md` 同步更新 — Windows PowerShell 用户的专属参考
+- 协议标记规范化：`[FRIEND_CONSULT round=N]` 必须在第一个非空行
+- `[XIONGDIMEN_GEMINI_QUERY]` 替代废弃的 `[XIONGDIMEN_FRONTEND_QUERY]`
+
+---
 
 ## 它解决什么
 
@@ -34,24 +55,69 @@
 - 方案有多条合理路径，但模型只沿着第一条路走到底。
 - 删除、迁移、发布、全局配置这类操作影响很大，却缺少第二视角。
 - 跨仓库、跨 CLI、跨系统环境时，某一端对另一端的真实约束不了解。
-- 说到了路径、命令、函数、行号，却没有说明依据来自哪里。
+- 产品/UX/多模态判断不是单一 agent 的强项，需要独立广度视角。
 - 会话切换或上下文重置时，工程状态散落在记忆里，接手方不知从哪读起。
 
-`朋友` 的处理方式很朴素：关键时刻，让另一个 agent 做一次独立评审。`handoff` 的处理方式同样朴素：切换前，把工程状态写成一份接手方 5 分钟内能读完的文档。
+`朋友` 和 `兄弟们` 让关键节点有第二或第三视角。`帮手` 让多 agent 并行执行不踩脚。`交班` 让切换不断线。
 
-## 核心能力
+---
 
-- **双端安装**：同一套协议分别安装到 Claude Code 和 Codex；两侧设计上对称但不机械镜像。
-- **自动触发**：执行性计划、复杂歧义、上下文压力、高风险信号、破坏性操作会触发协商。
-- **手动召唤**：对任意一端说 `/朋友`、`问问 claude`、`问问 codex`、`和朋友商量`。
-- **三态决议**：只允许 `AGREE`、`REFINE`、`OBJECT`，避免讨论失控。
-- **最多 5 轮**：协商不能无限拉扯，分歧解决不了就升级给用户。
-- **防递归**：收到朋友咨询的一方按裁决回推（同 thread 续接），但不新建反向咨询链路。
-- **handoff 持久化**：`/handoff`（`交班`）把工程当前状态写成结构化 Markdown，供下一个 agent 或同一 agent 重启后直接接手；与 `朋友` 协议互通。
-- **跨平台 manual 通道**：bridge 默认 `--transport manual`，**任何系统**（Linux / macOS / Windows / WSL）零外部依赖跑通。
-- **可选 claude_cli 加速**：显式 `--transport claude_cli` 启用自动 dispatch，配合 failure cache 熔断。
-- **来源约束**：提到具体路径、命令、函数、行号时，要说明读了哪个文件或跑了什么命令。
-- **stdlib only**：`bridge` 和 helper 都只用 Python 标准库；不引入第三方包，不修改用户 shell / PATH / proxy / settings。
+## 文件树
+
+```
+friend-skill/
+├── claude/skills/
+│   ├── friend/
+│   │   ├── SKILL.md                        # Claude 侧协商规则
+│   │   ├── POWERSHELL_TIPS.md              # PowerShell 专用说明
+│   │   └── scripts/
+│   │       ├── friend_mailbox_claude.py    # Claude 侧 mailbox 工具
+│   │       ├── start_friend_session.sh     # 会话启动辅助
+│   │       └── surface_friend_pending.sh   # 挂起任务浮出工具
+│   ├── xiongdimen/
+│   │   ├── SKILL.md                        # Claude 侧三方对齐规则
+│   │   └── scripts/
+│   │       └── gemini_leaf.py              # Gemini 叶子运行器
+│   ├── helper/
+│   │   └── SKILL.md                        # Claude 侧执行分工规则
+│   └── handoff/
+│       ├── SKILL.md                        # Claude 侧交班规则
+│       └── agents/
+│           └── openai.yaml                 # OpenAI-compatible agent 配置
+├── codex/
+│   ├── AGENTS.md.snippet                   # 写入 ~/.codex/AGENTS.md 的托管块
+│   └── skills/
+│       ├── friend/
+│       │   └── SKILL.md                    # Codex 侧协商规则
+│       ├── xiongdimen/
+│       │   ├── SKILL.md                    # Codex 侧三方对齐规则
+│       │   └── scripts/
+│       │       └── gemini_leaf.py          # Gemini 叶子运行器
+│       ├── helper/
+│       │   └── SKILL.md                    # Codex 侧执行分工规则
+│       └── handoff/
+│           ├── SKILL.md                    # Codex 侧交班规则
+│           ├── scripts/
+│           │   └── new_handoff.py          # 交班骨架生成器
+│           └── assets/
+│               └── handoff-template.md     # 规范模板（9 节）
+├── gemini/skills/
+│   └── xiongdimen/
+│       └── SKILL.md                        # Gemini 叶子审阅规则
+├── shared/friend/                          # 共享运行时（三端共用）
+│   ├── friend_discovery.py                 # mailbox 路径自动发现
+│   ├── friend_gate.py                      # 权限把关与格式验证
+│   ├── friend_mailbox_bridge.py            # 自动/手动消息桥
+│   ├── friend_queue.py                     # 队列（mailbox overwrite-safe fallback）
+│   ├── trust-profile.env.example           # 信任级别配置示例
+│   └── tests/
+│       └── test_friend_gate.py
+├── install.sh                              # bash/zsh/WSL 一键安装
+├── install.ps1                             # PowerShell 一键安装
+└── LICENSE
+```
+
+---
 
 ## 30 秒安装
 
@@ -71,168 +137,209 @@ cd friend-skill
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-安装脚本会做这些事：
+安装器是幂等的 — 重复运行只会更新文件，旧文件自动备份。
 
-1. 安装 Claude 端 `朋友` skill 到 `~/.claude/skills/朋友/`（含 `SKILL.md`、`POWERSHELL_TIPS.md`、`scripts/friend_mailbox_claude.py`）
-2. 安装 Codex 端 `朋友` skill 到 `~/.codex/skills/朋友/SKILL.md`
-3. 安装 Claude 端 `handoff` skill 到 `~/.claude/skills/handoff/SKILL.md`
-4. 安装 Codex 端 `handoff` skill 到 `~/.codex/skills/handoff/`（含 `SKILL.md`、`agents/openai.yaml`、`assets/handoff-template.md`、`scripts/new_handoff.py`）
-5. 创建 `~/.shared/friend/` 本地邮箱目录
-6. 安装邮箱桥脚本到 `~/.shared/friend/friend_mailbox_bridge.py`
-7. 通过 managed block 幂等更新 `~/.codex/AGENTS.md`（重复运行不会重复追加）
+---
 
-已存在的同名文件先备份为 `<path>.bak.<timestamp>`。
+## 技能使用说明
 
-## Transport 分层（v2 关键设计）
+### 朋友 (friend) — Claude ↔ Codex 双端协商
 
-朋友 skill 的双向通信不强依赖 `claude -p` 直连——后者在第三方网关 / 公司代理 / 受限网络下经常失败。
+**何时触发**（自动，无需用户操作）
 
-### `--transport manual`（默认；任何系统）
+- 制定实现计划、架构决策、批量变更计划
+- 上下文压力大、任务复杂或有歧义
+- 用户说了"重要/关键/小心"等高风险词
+- 破坏性/不可逆操作（删除、迁移、发布、全局配置）
+- Bug 排查陷入瓶颈，反复尝试没有新信号
 
-bridge 不调 `claude -p`，只做：
-- 协议守卫：首行必须是 `[FRIEND_CONSULT round=N]` / `[NOTIFY]`（inbox）或 `AGREE:` / `REFINE:` / `OBJECT:` / `ACK:`（outbox）
-- 完整归档（`--no-archive-prompts` 切元数据归档）
-- 状态机：`pending_for_claude` / `pending_for_codex` 双向标志
-- Sentinel `~/.shared/friend/.bridge.pending`（任一 pending 时存在的 JSON）
+**手动触发**
 
-manual 端到端工作流：
+在 Claude 或 Codex 中输入：`朋友`、`/friend`、`问问 codex/claude`、`和朋友商量`
 
-**前提**：本机要有一个 `friend_mailbox_bridge.py --watch --transport manual` 进程在跑，它负责把 inbox/outbox 文件变化转写成 `pending_for_*` 状态和 sentinel。
+**协商流程**
 
-启动 watcher（任一侧）：
+```
+[FRIEND_CONSULT round=1]   ← 第一个非空行必须是这行
+Phase: PLAN | WORK
+Task: <一句话描述>
+
+My draft: <方案>
+Review points:
+1. 有什么漏洞或更好的方案？
+2. 有没有没考虑到的风险？
+3. Decision: AGREE / REFINE / OBJECT
+```
+
+- 最多 5 轮，达成 `AGREE` 后执行
+- 未达成共识 → 升级给用户裁决
+- 协商结束后给用户一段简洁的 Owner Note
+
+---
+
+### 兄弟们 (xiongdimen) — Claude × Codex × Gemini 三方对齐
+
+**何时使用**
+
+- 需要 Gemini 的产品/UX/多模态/广度视角时
+- 功能级设计、前后端对齐、meta-skill 设计
+- 比 `朋友` 更重，不要用于单 agent 能处理的任务
+
+**触发**（仅手动）
+
+输入：`兄弟们`、`/xiongdimen`、`xiongdimen`
+
+**流程**
+
+1. 通过 `朋友` transport 向 Claude/Codex 发送 `[FRIEND_CONSULT round=1] Mode: xiongdimen`
+2. 向 Gemini 发送 `[XIONGDIMEN_GEMINI_QUERY]`（通过 `gemini_leaf.py`）
+3. 综合三方意见，出具 `[XIONGDIMEN_BRIEF]`
+
+**Gemini 查询格式**
+
+```text
+[XIONGDIMEN_GEMINI_QUERY]
+Task: <一句话>
+Focus: frontend | product | multimodal | meta-skill | other
+Context: <只给 Gemini 需要的内容>
+Known constraints: <后端/API/用户约束，或 N/A>
+```
+
+Gemini 返回格式：`Status / Key observations / Interface needs / Risks / Open questions`
+
+---
+
+### 帮手 (helper) — 协商后分工执行
+
+**前提**：必须先有 `[FRIEND_BRIEF]` 或 `[XIONGDIMEN_BRIEF]` 且 `[SPLIT: YES]`，否则说 `No split-ready brief found — 先走 朋友`。
+
+**触发**（仅手动，且需 `[SPLIT: YES]` 授权）
+
+输入：`帮手`、`/helper`、`helper`
+
+**Work Card 格式**
+
+```text
+[HELPER_WORK_CARD]
+source: FRIEND_BRIEF | XIONGDIMEN_BRIEF
+goal: <一句话>
+mode: file-disjoint
+claude: <Claude 负责的路径/任务>
+codex: <Codex 负责的路径/任务>
+integrator: Claude | Codex
+validate: <验证命令，或 N/A>
+stop-if: <重叠、共享配置、验证变更、阻塞条件>
+```
+
+- 各 agent 只在自己的路径/任务内工作
+- 执行完成后发送 `[HELPER_COMPLETE]`，integrator 汇总验证
+
+---
+
+### 交班 (handoff) — 工程持久化
+
+**触发**
+
+输入：`交班`、`/handoff`、`handoff`，或说"接力"、"帮我写个交班"
+
+**用途**
+
+- Agent 切换前保存工程状态
+- 上下文重置后从同一状态继续
+- 同一 agent 的自交班（self-handoff）
+
+**默认路径**：`~/.shared/friend/handoffs/<project-key>.md`
+
+**骨架生成器**（Codex 侧）
+
 ```bash
-python3 ~/.shared/friend/friend_mailbox_bridge.py --watch --mailbox ~/.shared/friend
+python3 ~/.codex/skills/handoff/scripts/new_handoff.py \
+  --project-key my-project \
+  --title "My Project" \
+  --agent codex \
+  --target-agent claude
 ```
 
-会话内一次往返：
-1. Codex 写 `~/.shared/friend/codex_to_claude.md` → manual watcher 检测 → 设 `pending_for_claude=true`
-2. Codex 启动 `bridge --wait-reply --mailbox <path>` 阻塞等回复
-3. ClaudeCode 用 `friend_mailbox_claude.py watch --print-inbox` 检测 pending → 推理 → `helper write --reply-file <reply>`
-4. manual watcher 检测 outbox 新 hash → 返回回复给 Codex（清 `pending_for_codex`）
+**标准模板（9 节）**
 
-### `--transport claude_cli`（可选；要求 `claude -p` 可用）
+| 节 | 内容 |
+|---|---|
+| `current_objective` | 背景、目标、当前停止点 |
+| `environment_commands` | 路径、shell、虚拟环境、运行/测试/构建命令 |
+| `file_map` | ≤5 个重要路径及用途 |
+| `open_issues` | 阻塞项、未解决问题、风险假设 |
+| `decisions_and_changes` | ≤5 条最近决策（含原因） |
+| `error_ledger` | 重大错误、根因、修复、预防 |
+| `next_actions` | 有序、可测试的下一步 |
+| `agent_notes` | 继续方注意事项、同伴审阅要点 |
+| `owner_review` | 用户标注：`[TODO]` / `[DONE]` / `[USER-ACTION]` |
 
-启用自动 dispatch：bridge 直接调 `claude -p`。失败时按 classification（timeout / proxy / auth / malformed / unknown）写 `failure_cache`，TTL 内跳过重试，指数退避 cap 1h。
+---
 
-诊断当前机器的 `claude -p` 是否可用：
+## 四技能协作示意
 
-```bash
-python3 ~/.shared/friend/friend_mailbox_bridge.py --probe --transport claude_cli
+```
+用户输入一个复杂任务
+        │
+        ▼
+  [朋友] 双端协商
+  Claude ↔ Codex
+        │
+   (需要产品/UX视角?)
+        ├── YES → [兄弟们] 三方对齐
+        │         Claude × Codex × Gemini
+        │
+   AGREE → 执行策略选择
+        │
+        ├── 单端执行 → Claude 或 Codex 直接做
+        ├── 分工执行 → [帮手] file-disjoint 分工
+        │
+   执行完成 / 上下文压力 / 角色切换
+        │
+        ▼
+  [交班] 写持久化工程状态
+  供下一个 agent 接手
 ```
 
-输出 `ok` 或 `failed:<classification>`。
+---
 
-## 协商协议
+## 信任级别配置
 
-第一行必须是：
+三端共用 `FRIEND_TRUST_LEVEL` 环境变量：
 
-```text
-[FRIEND_CONSULT round=N]
-```
+| 级别 | Claude → Codex | Codex → Claude | 说明 |
+|---|---|---|---|
+| `safe` | `--sandbox read-only` | `--allowedTools Read,Grep,Glob,LS` | 只读建议 |
+| `workspace` (默认) | `--sandbox workspace-write` | `--permission-mode acceptEdits` + Read/Write tools | 可写工作区 |
+| `danger` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | 危险模式，需 `FRIEND_TRUST_DANGER_ACK=I_UNDERSTAND` |
 
-`N` 从 1 开始。回复只能用三种决议：
+配置参考：`shared/friend/trust-profile.env.example`
 
-```text
-AGREE:  同意，可以执行
-REFINE: 方向对，但需要修改
-OBJECT: 方案不对，给出替代方案
-```
+---
 
-规则：
+## 常见问题
 
-- 最多 5 轮，达不成一致升级给用户裁决。
-- 收到 `[FRIEND_CONSULT]` 的一方可用 `--resume` 推回原会话（同协商下一轮），但不新起反向 `[FRIEND_CONSULT]`，避免套娃。
-- 涉及具体路径、命令、行号时附来源（读了哪个文件、跑了什么命令）。
+**Q: 朋友和兄弟们什么时候用哪个？**
+A: 多数情况用 `朋友`。只有当 Gemini 的产品/UX/多模态视角对当前任务有实质帮助时，才用 `兄弟们`。
 
-## 治理底线
+**Q: `[SPLIT: YES]` 自动触发帮手吗？**
+A: 不会。`[SPLIT: YES]` 是授权标记，仍需用户或主 agent 显式调用 `帮手`。
 
-任何长期规则变更（skill / hook / 全局配置 / memory）必须用 `[NOTIFY]` 通知对方，正文必含：来源、类别、改动文件路径、diff 摘要、影响面、期望动作、脱敏摘要。
+**Q: Gemini 不可用怎么办？**
+A: 记录 `Gemini: BLOCKED (<reason>)` 并继续，不阻塞流程。
 
-## 文件结构
+**Q: 协商陷入循环怎么办？**
+A: `朋友` 最多 5 轮；如果讨论不再产生新信息，优先重新检查问题框架，而不是继续打磨方案。5 轮后自动升级给用户裁决。
 
-```text
-friend-skill/
-├── README.md
-├── LICENSE
-├── install.sh
-├── install.ps1
-├── claude/
-│   └── skills/
-│       ├── 朋友/                          → 安装到 ~/.claude/skills/朋友/
-│       │   ├── SKILL.md
-│       │   ├── POWERSHELL_TIPS.md
-│       │   └── scripts/
-│       │       ├── friend_mailbox_claude.py
-│       │       ├── surface_friend_pending.sh
-│       │       └── start_friend_session.sh
-│       └── handoff/                       → 安装到 ~/.claude/skills/handoff/
-│           └── SKILL.md
-├── codex/
-│   ├── skills/
-│   │   ├── 朋友/                          → 安装到 ~/.codex/skills/朋友/
-│   │   │   └── SKILL.md
-│   │   └── handoff/                       → 安装到 ~/.codex/skills/handoff/
-│   │       ├── SKILL.md
-│   │       ├── agents/
-│   │       │   └── openai.yaml
-│   │       ├── assets/
-│   │       │   └── handoff-template.md
-│   │       └── scripts/
-│   │           └── new_handoff.py
-│   └── AGENTS.md.snippet
-└── shared/
-    └── friend/                            → 安装到 ~/.shared/friend/
-        ├── friend_mailbox_bridge.py
-        ├── friend_queue.py
-        └── trust-profile.env.example
-```
+**Q: 在 Windows PowerShell 中有什么特别注意的？**
+A: 参见 `claude/skills/friend/POWERSHELL_TIPS.md`，里面有 PowerShell 专用的 here-string 格式和 session_id 提取方法。
 
-## 故障排查
+---
 
-### `claude -p` 在某些机器返回 HTTP 200 + empty/malformed
+## 反馈与贡献
 
-第三方网关常见问题，bridge 修不了。两条路：
-1. 默认 manual transport 已经能跑通端到端协作，不依赖 `claude -p`
-2. 如要诊断网关：`python3 friend_mailbox_bridge.py --probe --transport claude_cli`
+Issues: https://github.com/fpyluck/friend-skill/issues
 
-### 启动 bridge 报"another watcher live"
+---
 
-同 mailbox 已有一个 watcher 在跑（heartbeat 还活）。`--watch` 第二次启动会 exit 0，避免重启循环。如需强制：先 `ps -ef | grep friend_mailbox_bridge` 确认无活进程，再删 `~/.shared/friend/.bridge_watch.lock`。
-
-### Windows 的 `python3` 是 Microsoft Store 占位
-
-git bash 在 Windows 上 `python3` 通常是 Store stub。改用 `python` 或 `py`。
-
-### WSL 下 `~/.shared/friend` 解析到 WSL home
-
-WSL 下的 `~` 是 `/home/<user>`，与 Windows-side mailbox 不通。启动 bridge / helper 时显式传 `--mailbox /mnt/c/Users/<user>/.shared/friend`。
-
-helper `friend_mailbox_claude.py` 自动按以下顺序探测：`FRIEND_MAILBOX` env → 当前 `.claude` 目录的 sibling `.shared/friend` → `~/.shared/friend`。
-
-## 设计原则
-
-- **人类终审**：两个 agent 都只是协作方，最终裁决权在用户。
-- **只在值得时打断**：协作要减少风险，而不是制造流程负担。
-- **证据优先**：具体事实要能回到文件、命令或工具输出。
-- **本地优先**：通信文件、桥脚本和协商记录都在本机；不上传任何外部服务。
-- **跨平台默认**：manual transport 在任何 Python 3 环境跑通；自动化是增益，不是前提。
-- **差异共存**：Claude Code 和 Codex 可以互相学习，但不需要长得一样。
-
-## 贡献
-
-欢迎 issue 和 PR。
-
-## License
-
-MIT, 见 [LICENSE](LICENSE).
-
-## English Summary
-
-**friend** is a bidirectional collaboration skill for Claude Code and Codex. Same protocol, two transports:
-
-- **Manual transport (default)**: stdlib-only file mailbox under `~/.shared/friend/`. The bridge guards protocol markers, archives messages, tracks `pending_for_*` flags, and writes a sentinel — but does **not** invoke `claude -p`. Works on any system.
-- **`claude_cli` transport (opt-in)**: invokes `claude -p` for auto-dispatch with classified failure cache (timeout / proxy / auth / malformed / unknown), exponential backoff capped at 1h.
-
-**handoff** is the persistence layer alongside friend: `朋友` handles live consultation and transport; `handoff` writes the compact project state the continuing agent needs after a break, context reset, or role switch. Say `交班` or `/handoff` to trigger it.
-
-Three verdicts (`AGREE`, `REFINE`, `OBJECT`), up to 5 rounds, then human escalation. Anti-recursion: replies may use thread/session resume, but a new `[FRIEND_CONSULT]` reverse chain is forbidden. Long-term rule changes must use `[NOTIFY]` with a strict required-fields template. Stdlib-only Python; no third-party packages, no global env / proxy / shell mutations.
+MIT License © 2026 fpyluck and contributors

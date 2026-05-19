@@ -1,16 +1,49 @@
 <!-- BEGIN friend-skill (managed by friend-skill installer; do not edit between markers) -->
-## 朋友 skill — 与 Claude Code 协商
+## 朋友/兄弟们/帮手/交班 skill 套件
 
-详细规则见 `~/.codex/skills/friend/SKILL.md`。要点：
+详细规则分别见对应 SKILL.md：
 
-- **强制触发**：制定计划阶段、上下文压力大、任务复杂或有歧义、用户用了"重要/关键/小心"等高风险词、涉及破坏性操作
-- **询问用户**：简单或难度难判的任务
-- **手动触发**：用户输入 `/朋友` 或说"问问 claude / 和朋友商量 / 叫上朋友"
-- **协商方式**：优先直连 `claude -p --output-format json`；失败时走 `~/.shared/friend/codex_to_claude.md` ↔ `claude_to_codex.md` 文件邮箱。bridge 默认 `--transport manual` 只做协议守卫 / archive / `pending_for_*` 状态 / sentinel `.bridge.pending`，**不调** `claude -p`；显式 `--transport claude_cli` 才启自动 dispatch
-- **跨 clone canonical 指针**：协商前若 `~/.shared/friend/CURRENT.md` 存在，先读其中的 `canonical` 路径；进入该路径用实时命令核验事实，不要把 CURRENT 当事实源
-- **多轮**：最多 5 轮，达不成一致则升级给用户
-- **防递归**：收到 `[FRIEND_CONSULT]` 时回复 AGREE/REFINE/OBJECT；允许 `claude -p --resume <session_id>` 把本轮裁决递送回原会话；禁止新起反向 `[FRIEND_CONSULT]` 或在 resume prompt 里扩大任务
-- **治理底线**：长期规则变更必须通过 `[NOTIFY]` 同步，包含改动文件路径、diff 摘要、影响面、期望动作；代改对方入口文件需先 NOTIFY/授权；链路故障时代改后立刻通告 diff
-- **桥启动解释器**：启动自动桥时按平台选择：Windows 用 `python` 或 `py`，Linux/macOS 用 `python3`
-- **桥单实例约束**：同机同 mailbox 只允许一个 bridge `--watch` 实例；启动前检查并清理 stale pid/lock
+- `~/.codex/skills/friend/SKILL.md`
+- `~/.codex/skills/xiongdimen/SKILL.md`
+- `~/.codex/skills/helper/SKILL.md`
+- `~/.codex/skills/handoff/SKILL.md`
+
+**朋友** — Codex ↔ Claude 双端协商
+
+- **强制触发**：制定计划阶段、上下文压力大、任务复杂/歧义、高风险词（重要/关键/小心）、破坏性操作、Bug 排查陷入瓶颈
+- **手动触发**：用户输入 `朋友`、`/friend`、`问问 claude`、`和朋友商量`
+- **协商方式**：首选 `claude -p --output-format json` 实时通讯；失败时走自动发现的 mailbox fallback
+- **桥模式**：默认 `--transport manual`（只做协议守卫/archive/状态）；显式 `--transport claude_cli` 才启自动 dispatch
+- **跨 clone 指针**：协商前若 `~/.shared/friend/CURRENT.md` 存在，先读 `canonical` 路径并用实时命令核验
+- **多轮上限**：最多 5 轮；达不成一致升级给用户
+- **防递归**：收到 `[FRIEND_CONSULT]` 时回复 AGREE/REFINE/OBJECT；允许 `claude -p --resume` 回推本轮裁决；禁止新起反向咨询链
+
+**兄弟们** — Codex × Claude × Gemini 三方对齐（仅手动触发）
+
+- 触发词：`兄弟们`、`/xiongdimen`、`xiongdimen`，或明确要求把 Claude 和 Gemini 拉进来
+- 通过 `朋友` transport 向 Claude 发 `[FRIEND_CONSULT round=1] Mode: xiongdimen`
+- 向 Gemini 发 `[XIONGDIMEN_GEMINI_QUERY]`（用 `~/.codex/skills/xiongdimen/scripts/gemini_leaf.py`）
+- Gemini 不可用时记录原因继续，不阻塞
+- 综合三方意见出具 `[XIONGDIMEN_BRIEF]`；`[SPLIT: YES]` 才授权帮手执行
+
+**帮手** — 协商后分工执行（须 `[SPLIT: YES]` 授权，仅手动触发）
+
+- 触发词：`帮手`、`/helper`、`helper`
+- 前提：当前任务上下文中存在 `[FRIEND_BRIEF]` 或 `[XIONGDIMEN_BRIEF]` 且含 `[SPLIT: YES]`
+- 用 `[HELPER_WORK_CARD]` 分配 file-disjoint 路径/任务，通过 `朋友` transport 传达
+- 各端只在自己路径内工作，完成后发 `[HELPER_COMPLETE]`；integrator 汇总验证
+
+**交班** — 工程持久化（仅读写状态，不触发协商）
+
+- 触发词：`交班`、`/handoff`、`handoff`、`接力`
+- 默认路径：`~/.shared/friend/handoffs/<project-key>.md`
+- 骨架生成：`python3 ~/.codex/skills/handoff/scripts/new_handoff.py --project-key <slug>`
+- 写前检查桥挂起状态；写后用 `friend_gate.py check-handoff` 验证
+- 9 节模板：objective / env_commands / file_map / open_issues / decisions / error_ledger / next_actions / agent_notes / owner_review
+
+**通用规则**
+
+- 信任级别（`FRIEND_TRUST_LEVEL`）：`safe` / `workspace`（默认）/ `danger`
+- 桥单实例约束：同机同 mailbox 只允许一个 bridge `--watch` 实例
+- 规则变更优先帮对方安装/更新；无法直接安装且无法实时联系时才用 `[NOTIFY]`
 <!-- END friend-skill -->
