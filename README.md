@@ -18,6 +18,52 @@
 
 ---
 
+## What's New — 2026-05-21
+
+### skill_consistency_check — SKILL.md 编辑钩子
+
+新增 `shared/friend/scripts/` 目录，包含三个新文件：
+
+| 文件 | 用途 |
+|---|---|
+| `skill_consistency_check.py` | PreToolUse hook：每次编辑 `SKILL.md` 时自动验证协议一致性，发现 FAIL 级问题即阻止写入 |
+| `skill_consistency_check_tests.py` | pytest 测试套件（16 个测试用例） |
+| `hook_config_snippet.json` | 直接贴入 `.claude/settings.json` 的 hook 配置片段 |
+
+**钩子验证项**：UTF-8 编码、PowerShell mojibake、硬编码用户路径、必需节存在性、协议标记白名单、环境变量优先级（`BUDDYS_*` > `XIONGDIMEN_*`）、遗留标记输出检测、shell 语法覆盖。
+
+编辑任意 SKILL.md 时如果有 FAIL 级发现，写入操作被自动阻断。WARNs 非阻断；`--strict` 模式下也阻断。
+
+### 四个 SKILL.md 同步更新
+
+**朋友 (friend)**
+- 触发条件重写："能改变决策时才协商"，改为价值信号模型
+- 环境变量优先级：`%BUDDYS_SHARED_ENV%` → `%XIONGDIMEN_SHARED_ENV%` → 默认路径
+- Gate 找不到时的手动预检流程（检查 `.bridge_state.json` + 内存中无 failure cache）
+- Transport 全部失败时不重试，降级或告知用户
+- `[FRIEND_BRIEF]` 格式精简，split 明确时才加 `[SPLIT: YES]` 字段
+
+**兄弟们 (xiongdimen → buddys)**
+- `name` 字段从 `xiongdimen` 改为 `buddys`
+- 新输出标记全部改为 `[BUDDYS_*]`（`XIONGDIMEN_*` 仅作为输入兼容保留）
+- `[BUDDYS_GEMINI_QUERY]` 替代 `[XIONGDIMEN_GEMINI_QUERY]`（旧格式兼容接受）
+- Gemini runner：`BUDDYS_GEMINI` > `XIONGDIMEN_GEMINI` 优先级
+- 新增"Suggest handoff"节
+- Brief 加入 `participants` 状态行，告知下游 agent quorum 情况
+
+**帮手 (helper)**
+- 支持 `[BUDDYS_BRIEF]`、`[XIONGDIMEN_BRIEF]`（遗留兼容），以及 `USER_DIRECT` 直接授权
+- `stop-if` 触发时立即发 `[HELPER_COMPLETE] status: blocked`，不继续执行
+- Work Card 通过 `朋友` transport 发送，失败时走相同 transport fallback 链
+
+**交班 (handoff)**
+- 不再强依赖 `朋友`，支持任意 user-named collaborator
+- 新增"Required Handoff Sections"列表（9 节），与一致性检查对齐
+- `%BUDDYS_SHARED_ENV%` 加入环境变量链
+- Codex 模板路径支持 `%CODEX_HOME%` 覆盖
+
+---
+
 ## What's New in v3.0 — 2026-05-19
 
 这是一次全新重写，核心变化是加入 **Gemini** 作为第三端，以及 **兄弟们 (xiongdimen)** 技能的正式发布。
