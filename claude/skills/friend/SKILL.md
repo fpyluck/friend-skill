@@ -1,28 +1,25 @@
 ---
 name: friend
-description: 'Peer consultation skill — Claude × Codex bilateral review. Triggers when user writes "朋友", "/friend", or "friend" as a standalone message or invocation, or says "问问 codex", "和朋友商量", or "叫上朋友". Mandatory during implementation planning phases; in work phase when context is large, task is ambiguous, high-risk signal words appear, or destructive/global operations are involved. When a bug investigation plateaus, prefer a reframe: challenge assumptions, consider alternative architectures, or say the current approach may be infeasible. Ask the user on unclear cases; skip for simple tasks. Up to 5 rounds to consensus; user is the final arbiter.'
+description: 'Peer consultation skill — Claude × Codex bilateral review. Triggers when the user writes "朋友", "/friend", or "friend" as a standalone message or invocation, or says "问问 codex", "和朋友商量", or "叫上朋友". Use proactively when a second model changes the decision: non-trivial implementation planning, ambiguity, high-risk or irreversible work, global config changes, or investigation plateau. Skip clear low-risk execution. The user is the final arbiter.'
 ---
 
 # Friend (朋友) — Claude × Codex Peer Consultation
 
-You (Claude) and your local Codex are partners. Consult each other on important tasks; when a fix stalls, stop polishing the same idea and re-check the framing. Escalate to the user with the current state, the limits of the current approach, and any new directions. **The user is the final arbiter.**
+You (Claude) and your local Codex are partners. Use consultation to improve decisions, not as a permission gate. When a fix stalls, stop polishing the same idea and re-check the framing. Escalate to the user with the current state, the limits of the current approach, and any new directions. **The user is the final arbiter.**
 
 ## Environment Memory
 
-For local tool, shell, path, or inter-agent runtime issues, read `%XIONGDIMEN_SHARED_ENV%` if set, otherwise `%USERPROFILE%\.shared\env\ENVIRONMENT.md` if present. Update it in place only for stable environment facts, fixes, missing tools, and user improvement suggestions; do not record task details.
+For local tool, shell, path, or inter-agent runtime issues, read `%BUDDYS_SHARED_ENV%` if set, otherwise `%XIONGDIMEN_SHARED_ENV%` if set, otherwise `%USERPROFILE%\.shared\env\ENVIRONMENT.md` if present. Update it in place only for stable environment facts, fixes, missing tools, and user improvement suggestions; do not record task details.
 
 ## Trigger Conditions
 
-### Mandatory (no confirmation needed)
+### Consult without confirmation when it changes the decision
 
-- **Implementation planning**: producing an action plan, architecture decision, or batch-change plan. *Pure Q&A (explain, research report) does NOT trigger.*
-- **Work phase** — any of the following:
-  - Context pressure (many files read, many tool calls, session feels long, approaching compression)
-  - Complex or ambiguous task (multiple valid paths, unclear requirements, cross-subsystem)
-  - Owner uses urgency/caution words: "critical", "important", "be careful", "don't break this" — or equivalents in any language
-  - Destructive / irreversible operations (delete, migrate, production deploy)
-  - Cross-repo / cross-toolchain / unclear permission boundary / global config change
-  - Bug investigation plateau / diminishing returns (repeated attempts are not adding new signal, the workaround is getting brittle, or the current fix feels overfitted): treat this as a cue to widen the consultation toward architectural alternatives, different viewpoints, or a candid feasibility check
+- Non-trivial planning: architecture decisions, batch-change plans, cross-subsystem contracts, or multiple viable routes.
+- Risk signals: destructive or irreversible operations, unclear permission boundaries, production deploys, global config changes, or owner caution words such as "critical", "important", "be careful", "don't break this" and equivalents.
+- Work signals: context pressure, repeated failed attempts, brittle workaround growth, or an investigation plateau where another framing may change the outcome.
+
+These are value signals, not role cages. If the objective is clear, low-risk, and local, proceed without consultation.
 
 ### Ask the user
 
@@ -38,15 +35,15 @@ Owner types `/friend`, says "问问 codex", "和朋友商量", "叫上朋友" �
 
 ### Boundary with `兄弟们`
 
-`朋友` remains bilateral Claude ↔ Codex transport. If the owner explicitly invokes `兄弟们` / `xiongdimen`, use that skill; it may call `朋友` internally with `Mode: xiongdimen`, but an active `朋友` round must not start a second `xiongdimen` session.
+`朋友` is bilateral Claude ↔ Codex transport. If the owner explicitly invokes `兄弟们` / `Buddys` / legacy `xiongdimen`, that route hosts the turn. Buddys may call `朋友` internally with `Mode: buddys` or legacy `Mode: xiongdimen`; then `朋友` is transport/reviewer for Buddys, not a separate user-facing skill activation.
 
 ### Boundary with `帮手`
 
-`帮手` is only for execution splitting after consensus. When a `朋友` decision needs split execution, emit a `[FRIEND_BRIEF]` with `[SPLIT: YES]`; otherwise use `[SPLIT: NO]`. The split tag authorizes `帮手` but does not auto-start it.
+`帮手` owns file-disjoint split execution. Emit `[SPLIT: YES]` only when split ownership is explicit, either from the user or from the consultation decision. The split tag authorizes `帮手` but does not auto-start it.
 
 ### Suggest handoff
 
-Boundary: `朋友` is for live decisions and transport; `handoff` is for durable state the next agent can resume from.
+Boundary: `朋友` is for live decisions and transport; `handoff` is for durable state the next agent can resume from. Either can point to the other when the current objective needs it.
 
 When context pressure is high or a role switch / session end is signaled, suggest: "Consider writing a handoff before switching agents — say 交班 or `/handoff`." Do not write automatically. If consultation shaped the work, say to record consensus in `decisions_and_changes` and unresolved points in `open_issues`.
 
@@ -66,9 +63,11 @@ For a prepared outbound message, check it with:
 
 Use the gate to catch pending mailbox state, queue depth, bridge health, failure cache, and obvious secret patterns. Mailbox discovery is automatic; use `FRIEND_MAILBOX` or `--mailbox` only to resolve ambiguity. It does not replace the consultation protocol.
 
-### Default scope: read-only advice
+**Gate not found**: if `friend_gate.py` is missing at `%USERPROFILE%\.shared\friend\friend_gate.py`, skip the gate and do a manual preflight: check `.bridge_state.json` for `pending_for_claude`, verify no active failure cache entry in memory, then proceed.
 
-Consultation requests opinions only. To ask Codex to modify files directly, write explicitly: "Please directly modify: <path(s)>". Otherwise Codex gives suggestions only.
+### Default scope
+
+Default consultation asks for advice. Direct modification is allowed only with an explicit write scope such as "Please directly modify: <path(s)>"; include owned paths, validation, and return expectations.
 
 ### Project context (required for round=1 of new sessions)
 
@@ -94,7 +93,7 @@ Template:
   - build: <one-line or N/A>
   - run: <one-line or N/A>
   - lint: <one-line or N/A>
-- Key constraints: <2–3 items; N/A if none>
+- Key constraints: <items; N/A if none>
 - Key file references: <@ references or absolute paths; N/A if none>
 ```
 
@@ -106,7 +105,9 @@ Try in order:
 3. **File mailbox (manual)** (when spawn is blocked or above options fail)
 4. **User relay** (last resort)
 
-Write `-o` files to `%TEMP%`/`$TMPDIR` only. Stdout JSONL is the primary parse target.
+**Codex unavailable / all transports failed**: do not spin-retry. Escalate to the user with current state and blocked reason, then switch to User relay or pause. Auth errors never retry — degrade immediately.
+
+Write `-o` files to `%TEMP%` (Windows) or `$TMPDIR` (POSIX) — expand the env var, never hardcode a path. Stdout JSONL is the primary parse target.
 Append sandbox flags based on `FRIEND_TRUST_LEVEL` (see Trust Level section).
 
 ### Round 1 command (Claude → Codex)
@@ -161,36 +162,27 @@ EOF
 - **REFINE** → incorporate and continue
 - **OBJECT** → same, include your rationale
 - If the discussion is no longer producing materially new information, pause repetitive patching and re-check the problem framing. Consider architecture, boundary changes, or whether the task is infeasible as stated.
-- **Max 5 rounds.** Still diverging → escalate to user:
-
-```
-Peer consultation: 5 rounds without consensus.
-My plan: <key points>
-Codex's plan: <key points>
-Core disagreement: <what differs>
-Please decide.
-```
 
 ### Reaching consensus (AGREE)
 
 Prefix reply with: "Agreed with Codex:" then proceed.
 
-When the consensus should authorize or reject split execution, include:
+When a visible decision summary is useful, include:
 
 ```text
 [FRIEND_BRIEF]
-[SPLIT: YES | NO]
 goal: <one sentence>
-owners: <Claude / Codex / optional external leaf helpers, or N/A>
-integrator: <Claude | Codex | N/A>
 review-by: 朋友
 validate: <commands or N/A>
-stop-if: <overlap, shared config, changed validation, blocker, or N/A>
+decision: <chosen route>
+risks: <open risks, or N/A>
 ```
+
+When split ownership is explicit, add `[SPLIT: YES]` and the owners/integrator fields needed by `帮手`.
 
 ### Owner Note After Consultation
 
-After consensus is reached (`AGREE`), after a 5-round escalation to the owner, or after a final-review consultation, include a concise owner-facing note in the next user-visible reply. Keep it to 3–6 bullets:
+After consensus is reached (`AGREE`), after escalation to the owner, or after a final-review consultation, include a concise owner-facing note in the next user-visible reply:
 
 - Question sent to the counterpart (brief)
 - Key corrections or direction changes from the review
@@ -230,17 +222,16 @@ Outcome: AGREE | ESCALATED | BLOCKED
 Unresolved: <open risks, or N/A>
 ```
 
-Use `short` unless the owner asks for `--detail`, `详细`, or similar. `short` is at most 6 key deltas; `detail` is at most 12 deltas and may add one visible rationale line per delta, still without raw transcripts.
+Use `short` unless the owner asks for `--detail`, `详细`, or similar. In `short`, include key deltas only; in `detail`, add visible rationale where useful, still without raw transcripts.
 When useful, include explicitly rejected options only as `Rejected: <option> — <visible reason>`.
 
 ### After consensus: choose the smallest work route
 
 After `AGREE`, choose the lowest-coupling route that satisfies the consensus. Do not duplicate `helper` or `handoff` protocols here.
-Use at most one additional final-review `朋友` consultation per task, and never start it from inside an active consultation or anti-recursion response.
 
 - **Self-execute**: Claude does the work. Use `朋友` again for final review when risk, complexity, or the consensus calls for peer review.
 - **Counterpart-execute**: Codex should do the work while Claude reviews. Use the existing write-scope mechanism: `Please directly modify: <path(s)>`. Include owned paths/tasks, validation, and return expectations.
-- **Helper route**: work is parallelizable, has multiple owners, or needs external CLI helpers. The `朋友` consensus should state goal, owners, integrator/review-by, validation, and open risks; then invoke `helper`/`帮手`. `helper` owns launch/return briefs and the final review packet.
+- **Helper route**: work is parallelizable, has multiple owners, or needs external CLI helpers, and split ownership is explicit. Add `[SPLIT: YES]` to the brief, then explicitly invoke `helper`/`帮手`; the tag authorizes split execution but does not start it by itself. `helper` owns launch/return briefs and any final review packet the brief requires.
 
 If the route is unclear, ask the user or state a minimal assumption. If the route ends at a session boundary or role switch, also see "Suggest handoff" above. During an anti-recursion response, only return `AGREE` / `REFINE` / `OBJECT`; the originating session chooses the route.
 
