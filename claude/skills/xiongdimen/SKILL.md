@@ -1,39 +1,39 @@
 ---
-name: xiongdimen
-description: 'Tri-agent alignment skill for Claude × Codex × Gemini. Trigger only when the user explicitly writes "兄弟们", "/xiongdimen", or "xiongdimen", or asks to bring Codex and Gemini into the same design/review loop. Uses friend internally for Claude↔Codex and Gemini as a bounded leaf reviewer.'
+name: buddys
+description: 'Buddys tri-agent alignment skill for Claude × Codex × Gemini. Trigger when the user explicitly writes "兄弟们", "/buddys", "buddys", or legacy "/xiongdimen" / "xiongdimen", or asks to bring Codex and Gemini into the same design/review loop. Uses friend internally as Claude↔Codex transport and asks Gemini for bounded independent review.'
 ---
 
-# 兄弟们 (Xiongdimen)
+# 兄弟们 (Buddys)
 
-Use `兄弟们` for feature-level, product/UX/backend alignment, or meta-skill design where Claude, Codex, and Gemini each add distinct signal. It is heavier than `朋友`; skip it for clear single-agent work or ordinary bilateral review.
+Use `兄弟们` / `Buddys` when Claude, Codex, and Gemini can add distinct signal to the same decision. It is heavier than `朋友`; skip it when the goal is clear enough for one agent or ordinary bilateral review.
 
 ## Environment Memory
 
-For local tool, shell, path, Gemini runner, or inter-agent runtime issues, read `%XIONGDIMEN_SHARED_ENV%` if set, otherwise `%USERPROFILE%\.shared\env\ENVIRONMENT.md` if present. Update it in place only for stable environment facts, fixes, missing tools, and user improvement suggestions; do not record task details.
+For local tool, shell, path, Gemini runner, or inter-agent runtime issues, read `%BUDDYS_SHARED_ENV%` if set, otherwise `%XIONGDIMEN_SHARED_ENV%` if set, otherwise `%USERPROFILE%\.shared\env\ENVIRONMENT.md` if present. Update it in place only for stable environment facts, fixes, missing tools, and user improvement suggestions; do not record task details.
 
 ## Activation Boundaries
 
-- Manual trigger only: `兄弟们`, `/xiongdimen`, `xiongdimen`, or an explicit request to involve both Codex and Gemini.
-- If `[FRIEND_CONSULT round=N]` or `[XIONGDIMEN_*]` is already active, do not start another `xiongdimen` session. Respond under the active protocol.
-- The initiating agent hosts the session. If Claude receives `[FRIEND_CONSULT round=N]` with `Mode: xiongdimen`, Claude is a peer reviewer only and must not spawn a new tri-agent flow.
+- Manual trigger: `兄弟们`, `/buddys`, `buddys`, legacy `/xiongdimen` / `xiongdimen`, or an explicit request to involve both Codex and Gemini. `朋友` may recommend escalating to `兄弟们`, but `兄弟们` does not auto-start.
+- If `[FRIEND_CONSULT round=N]`, `[BUDDYS_*]`, or legacy `[XIONGDIMEN_*]` is already active, do not start another Buddys session. Respond under the active protocol.
+- The initiating agent hosts the session. If Claude receives `[FRIEND_CONSULT round=N]` with `Mode: buddys` or legacy `Mode: xiongdimen`, Claude responds within that inbound flow and must not spawn a new tri-agent flow.
 
 ## Roles
 
-- **Host**: keep scope small, choose the smallest useful quorum, synthesize the final brief.
+- **Host**: keep scope useful, choose the smallest useful quorum, synthesize the final brief.
 - **Claude**: ambiguity checks, alternative framings, user-facing synthesis, risk narrative.
 - **Codex**: implementation contracts, backend/API shape, repo-grounded risks, validation boundaries.
-- **Gemini**: breadth, frontend/UX, multimodal/product critique. Gemini is a leaf reviewer: return findings and stop.
+- **Gemini**: breadth, frontend/UX, multimodal/product critique, or any outcome-changing issue the prompt asks it to inspect.
 - **User**: final arbiter.
 
-These roles are defaults, not cages. If the task clearly needs a different emphasis, state it in the prompt instead of adding more protocol.
+These roles are defaults, not cages. Any participant may raise out-of-role issues when they change the decision. The host owns synthesis, scope control, and whether follow-up rounds are worth the cost.
 
 ## Flow
 
-1. Decide whether `朋友` is enough. Use `兄弟们` only when Gemini's breadth/frontend/multimodal view is materially useful.
+1. Decide whether `朋友` is enough. Use `兄弟们` only when a third independent view is materially useful.
 2. Build a compact context block. For non-code/meta-skill tasks: `N/A — not a code project`.
-3. Ask the Claude/Codex peer through `朋友` transport with `Mode: xiongdimen`.
-4. Ask Gemini with `[XIONGDIMEN_GEMINI_QUERY]`. If Gemini is unavailable, record `Gemini: BLOCKED (<reason>)` and continue.
-5. Synthesize a brief decision document; do not claim consensus where a participant was blocked. If participants disagree, surface the tradeoff instead of majority-voting it away.
+3. Ask the Claude/Codex peer through `朋友` transport with `Mode: buddys`. This is internal transport for Buddys, not a separate user-facing `朋友` activation.
+4. Ask Gemini with `[BUDDYS_GEMINI_QUERY]`. If Gemini is unavailable, record `Gemini: BLOCKED (<reason>)` in the brief's `participants` field and continue with the two-agent consensus.
+5. Synthesize a brief decision document; do not claim consensus where a participant was blocked. Always include the `participants` status line in the brief so downstream agents know the quorum. If participants disagree, surface the tradeoff instead of majority-voting it away.
 
 ## Claude/Codex Peer Prompt
 
@@ -41,7 +41,7 @@ Use the normal `friend/SKILL.md` transport, trust, resume, and anti-recursion ru
 
 ```text
 [FRIEND_CONSULT round=1]
-Mode: xiongdimen
+Mode: buddys
 Phase: Explore | Align | Final Review
 
 Task: <one sentence>
@@ -58,26 +58,26 @@ Review:
 3. Decision: AGREE / REFINE / OBJECT
 ```
 
-Inbound `Mode: xiongdimen` response as Claude:
+Inbound `Mode: buddys` or legacy `Mode: xiongdimen` response as Claude:
 - Check ambiguity, user outcome, synthesis quality, hidden assumptions, and product risk.
 - Return `AGREE`, `REFINE`, or `OBJECT`.
 - Include what was verified, what was assumed, and open risks.
-- Do not initiate outbound `朋友`, `helper`, or `xiongdimen`.
+- Do not start a new outbound collaboration chain from inside this inbound review.
 
-## Gemini Leaf Query
+## Gemini Query
 
 Prefer the bundled runner:
 
 ```bash
-XIONGDIMEN_GEMINI="${XIONGDIMEN_GEMINI:-${CLAUDE_HOME:-$HOME/.claude}/skills/xiongdimen/scripts/gemini_leaf.py}"
-${XIONGDIMEN_PYTHON:-python3} "$XIONGDIMEN_GEMINI" "<prompt>" "<project_dir_or_.>"
+BUDDYS_GEMINI="${BUDDYS_GEMINI:-${XIONGDIMEN_GEMINI:-${CLAUDE_HOME:-$HOME/.claude}/skills/xiongdimen/scripts/gemini_leaf.py}}"
+${BUDDYS_PYTHON:-${XIONGDIMEN_PYTHON:-python3}} "$BUDDYS_GEMINI" "<prompt>" "<project_dir_or_.>"
 ```
 
 The runner sends multiline prompts through stdin (`gemini -p ""`) so Windows `cmd.exe`, Git Bash, WSL, and POSIX shells do not mangle query text. If the runner is unavailable, probe `gemini` and use Gemini CLI in plan/read-only mode. On command, auth, trust, or network failure, skip Gemini and record the reason.
-If Gemini returns vague or malformed output, ask once for the same response shape; if still unusable, record `Gemini: BLOCKED (unusable output)`.
+Gemini is bounded by the prompt and does not own final synthesis. It may raise out-of-focus issues, propose alternatives, or answer follow-up rounds when useful. If Gemini returns vague or malformed output, request the same response shape again while it is still useful; record `Gemini: BLOCKED (unusable output)` when the output cannot support synthesis.
 
 ```text
-[XIONGDIMEN_GEMINI_QUERY]
+[BUDDYS_GEMINI_QUERY]
 Task: <one sentence>
 Focus: frontend | product | multimodal | meta-skill | other
 Context: <only what Gemini needs>
@@ -88,20 +88,22 @@ Status: READY | NEEDS_CLARIFICATION | BLOCKED
 Key observations: <concise bullets>
 Interface/API needs: <only if relevant>
 Data or UX assumptions: <specific assumptions>
-Risks: <product/UX/frontend/multimodal risks>
+Risks: <risks relevant to the requested focus>
 Open questions: <blocking questions, or N/A>
 ```
 
-Accept legacy `[XIONGDIMEN_FRONTEND_QUERY]` as the same Gemini leaf query (deprecated; prefer `[XIONGDIMEN_GEMINI_QUERY]`).
+Accept legacy `[XIONGDIMEN_GEMINI_QUERY]` and `[XIONGDIMEN_FRONTEND_QUERY]` as the same Gemini leaf query.
+
+New briefs and work cards output `BUDDYS_*` markers only; `XIONGDIMEN_*` is accepted as input for backward compatibility but never emitted.
 
 ## Final Brief
 
 Use the smallest brief that captures the decision:
 
 ```markdown
-[XIONGDIMEN_BRIEF]
-[SPLIT: YES | NO]
-# Xiongdimen Brief: <topic>
+[BUDDYS_BRIEF]
+# Buddys Brief: <topic>
+participants: Claude: READY | Codex: READY | Gemini: READY|BLOCKED(<reason>)
 
 ## Decision
 ## Role Inputs
@@ -112,7 +114,11 @@ Use the smallest brief that captures the decision:
 
 If the task is not a feature, rename sections naturally but keep `Decision`, `Role Inputs`, and `Risks / Open Questions`.
 
-Use `[SPLIT: YES]` only when the aligned plan is ready for file-disjoint execution by `帮手`; it authorizes `帮手` but does not auto-start it. Use `[SPLIT: NO]` for alignment-only outcomes, unresolved disagreement, blocked Gemini input, or single-owner execution.
+When the owner asks for split execution or the aligned decision explicitly needs file-disjoint execution by `帮手`, add `[SPLIT: YES]` to the brief with owners, integrator, validation, and stop-if fields. The tag remains explicit authorization; discussion-only outcomes omit it.
+
+## Suggest handoff
+
+When context pressure is high, a role switch is signaled, or the session is ending after a tri-agent decision, suggest: "Consider writing a handoff before switching agents — say 交班 or `/handoff`." Do not write automatically. Record consensus in `decisions_and_changes` and unresolved points in `open_issues`.
 
 ## On-Demand Collaboration Report
 
@@ -125,4 +131,4 @@ Report useful deltas only:
 - final decision and unresolved risks.
 - explicitly rejected options only when the rejection changed the final path.
 
-Scope to the current task or the period since the last user request unless the owner asks for a wider range. `short` reports use at most 6 key deltas; `detail` reports use at most 12 deltas with visible rationale where useful. Do not ask Gemini to self-report the process. Do not include raw transcripts, hidden deliberation, JSONL, or long quotes. If a `交班` handoff already records the final decision, focus this report on the path to that decision instead of duplicating the handoff.
+Scope to the current task or the period since the last user request unless the owner asks for a wider range. Use `short` for key deltas; use `detail` when visible rationale is useful. Do not ask Gemini to self-report the process. Do not include raw transcripts, hidden deliberation, JSONL, or long quotes. If a `交班` handoff already records the final decision, focus this report on the path to that decision instead of duplicating the handoff.
