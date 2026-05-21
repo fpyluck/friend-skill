@@ -1,0 +1,22 @@
+{
+  "_comment": "Add the block inside 'hooks.PreToolUse' in .claude/settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"\nimport json, sys, os, subprocess\ndata = json.load(sys.stdin)\npath = data.get('tool_input', {}).get('file_path', '') or data.get('tool_input', {}).get('path', '')\nif not path.lower().endswith('skill.md'):\n    sys.exit(0)\nscript = os.path.join(os.path.expandvars('%USERPROFILE%'), '.shared', 'friend', 'scripts', 'skill_consistency_check.py')\nif not os.path.exists(script):\n    sys.exit(0)\nresult = subprocess.run([sys.executable, script, '--side', 'both', '--skills-dir', os.path.dirname(os.path.dirname(path))], capture_output=True, text=True)\nif result.returncode != 0:\n    out = {'decision': 'block', 'reason': 'skill-consistency-check FAIL:\\n' + result.stdout[-2000:]}\n    print(json.dumps(out))\n    sys.exit(2)\n\""
+          }
+        ]
+      }
+    ]
+  },
+  "usage_notes": [
+    "Only fires when the file being edited ends with SKILL.md",
+    "Blocks (exit 2) only on FAIL-level findings; WARNs are non-blocking",
+    "Requires Python in PATH; on Windows uses the same python as the current process",
+    "To also block on warnings, add --strict to the command"
+  ]
+}
