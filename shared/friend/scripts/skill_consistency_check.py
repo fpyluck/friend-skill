@@ -36,7 +36,7 @@ REGISTRY: dict = {
             "Consultation Protocol", "Anti-recursion", "Trust Level",
         ],
         "helper": [
-            "Routing Boundary", "Input Brief", "Work Card",
+            "Routing Boundary", "Input Authorization", "Work Card",
             "Execution Rules", "Completion",
         ],
         "xiongdimen": [
